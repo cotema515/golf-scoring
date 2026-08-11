@@ -8,6 +8,14 @@ struct CourseTee: Identifiable, Hashable {
     var slope: Int
     var yardage: Int
 
+    var isWomensTee: Bool {
+        let normalizedName = name.lowercased()
+        return normalizedName.contains("women")
+            || normalizedName.contains("(w)")
+            || normalizedName.contains("(f)")
+            || normalizedName.contains("(l)")
+    }
+
     var setupName: String {
         "\(name) · \(yardage) yds · \(rating.formatted(.number.precision(.fractionLength(1)))) / \(slope)"
     }
@@ -27,8 +35,8 @@ struct CourseCatalogEntry: Identifiable, Hashable {
         let candidates = preferredRange.isEmpty ? playableTees : preferredRange
 
         return candidates.min { lhs, rhs in
-            let lhsWomenPenalty = lhs.name.localizedCaseInsensitiveContains("(W)") ? 1 : 0
-            let rhsWomenPenalty = rhs.name.localizedCaseInsensitiveContains("(W)") ? 1 : 0
+            let lhsWomenPenalty = lhs.isWomensTee ? 1 : 0
+            let rhsWomenPenalty = rhs.isWomensTee ? 1 : 0
             if lhsWomenPenalty != rhsWomenPenalty {
                 return lhsWomenPenalty < rhsWomenPenalty
             }
@@ -59,14 +67,17 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             name: "The Ocean Course",
             location: "Kiawah Island, SC",
             tees: [
-                CourseTee(name: "Yellow", par: 72, rating: 76.8, slope: 153, yardage: 7416),
-                CourseTee(name: "Yellow/Black", par: 72, rating: 75.4, slope: 151, yardage: 6968),
-                CourseTee(name: "Black", par: 72, rating: 73.9, slope: 148, yardage: 6519),
-                CourseTee(name: "Black/White", par: 72, rating: 73.2, slope: 144, yardage: 6367),
-                CourseTee(name: "White", par: 72, rating: 72.6, slope: 139, yardage: 6215),
-                CourseTee(name: "White/Green", par: 72, rating: 71.9, slope: 137, yardage: 5768),
-                CourseTee(name: "Green", par: 72, rating: 71.1, slope: 134, yardage: 5320),
-                CourseTee(name: "Red", par: 72, rating: 67.6, slope: 124, yardage: 2660)
+                CourseTee(name: "Championship", par: 72, rating: 79.1, slope: 155, yardage: 7772),
+                CourseTee(name: "Black", par: 72, rating: 77.4, slope: 153, yardage: 7385),
+                CourseTee(name: "Gold", par: 72, rating: 74.7, slope: 150, yardage: 6793),
+                CourseTee(name: "Silver", par: 72, rating: 72.1, slope: 140, yardage: 6356),
+                CourseTee(name: "Blue", par: 72, rating: 70.5, slope: 131, yardage: 6005),
+                CourseTee(name: "Blue / Red", par: 72, rating: 68.9, slope: 129, yardage: 5702),
+                CourseTee(name: "Red", par: 72, rating: 66.5, slope: 120, yardage: 5226),
+                CourseTee(name: "Silver (Women)", par: 72, rating: 78.9, slope: 151, yardage: 6356),
+                CourseTee(name: "Blue (Women)", par: 72, rating: 76.9, slope: 147, yardage: 6005),
+                CourseTee(name: "Blue / Red (Women)", par: 72, rating: 75.4, slope: 137, yardage: 5702),
+                CourseTee(name: "Red (Women)", par: 72, rating: 72.6, slope: 130, yardage: 5226)
             ],
             holes: makeHoles(
                 pars: [4, 5, 4, 4, 3, 4, 5, 3, 4, 4, 5, 4, 4, 3, 4, 5, 3, 4],
@@ -79,13 +90,14 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             location: "Kiawah Island, SC",
             tees: [
                 CourseTee(name: "Tournament", par: 72, rating: 73.0, slope: 134, yardage: 6911),
-                CourseTee(name: "Tournament/Blue", par: 72, rating: 72.3, slope: 132, yardage: 6694),
-                CourseTee(name: "Blue", par: 72, rating: 71.5, slope: 130, yardage: 6477),
-                CourseTee(name: "Blue/White", par: 72, rating: 70.5, slope: 127, yardage: 6241),
-                CourseTee(name: "White", par: 72, rating: 69.5, slope: 124, yardage: 6005),
-                CourseTee(name: "White/Gold", par: 72, rating: 68.3, slope: 121, yardage: 5557),
-                CourseTee(name: "Gold", par: 72, rating: 67.1, slope: 118, yardage: 5109),
-                CourseTee(name: "Silver", par: 72, rating: 65.8, slope: 113, yardage: 4520)
+                CourseTee(name: "Turtle", par: 72, rating: 71.3, slope: 132, yardage: 6510),
+                CourseTee(name: "Nicklaus", par: 72, rating: 70.1, slope: 127, yardage: 6162),
+                CourseTee(name: "Kiawah", par: 72, rating: 68.1, slope: 125, yardage: 5746),
+                CourseTee(name: "Governor's", par: 72, rating: 65.6, slope: 115, yardage: 5310),
+                CourseTee(name: "Carolina", par: 72, rating: 64.4, slope: 112, yardage: 5064),
+                CourseTee(name: "Kiawah (Women)", par: 72, rating: 73.7, slope: 131, yardage: 5746),
+                CourseTee(name: "Governor's (Women)", par: 72, rating: 70.8, slope: 123, yardage: 5310),
+                CourseTee(name: "Carolina (Women)", par: 72, rating: 69.3, slope: 120, yardage: 5064)
             ],
             holes: makeHoles(
                 pars: [4, 5, 4, 3, 5, 4, 3, 4, 4, 5, 4, 4, 5, 3, 4, 3, 4, 4],
@@ -98,13 +110,17 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             location: "Kiawah Island, SC",
             tees: [
                 CourseTee(name: "Black", par: 72, rating: 72.7, slope: 138, yardage: 6620),
-                CourseTee(name: "Black/Blue", par: 72, rating: 71.8, slope: 135, yardage: 6368),
-                CourseTee(name: "Blue", par: 72, rating: 70.9, slope: 132, yardage: 6115),
-                CourseTee(name: "Blue/White", par: 72, rating: 69.8, slope: 128, yardage: 5775),
-                CourseTee(name: "White", par: 72, rating: 68.6, slope: 124, yardage: 5435),
-                CourseTee(name: "White/Gold", par: 72, rating: 67.1, slope: 120, yardage: 5010),
-                CourseTee(name: "Gold", par: 72, rating: 65.6, slope: 116, yardage: 4585),
-                CourseTee(name: "Silver", par: 72, rating: 64.3, slope: 111, yardage: 4063)
+                CourseTee(name: "Gold", par: 72, rating: 71.0, slope: 133, yardage: 6205),
+                CourseTee(name: "Silver", par: 72, rating: 69.0, slope: 127, yardage: 5806),
+                CourseTee(name: "Silver / Blue", par: 72, rating: 67.6, slope: 125, yardage: 5559),
+                CourseTee(name: "Blue", par: 72, rating: 66.7, slope: 118, yardage: 5356),
+                CourseTee(name: "Blue / Red", par: 72, rating: 64.9, slope: 114, yardage: 4962),
+                CourseTee(name: "Red", par: 72, rating: 63.5, slope: 112, yardage: 4630),
+                CourseTee(name: "Silver (Women)", par: 72, rating: 74.1, slope: 142, yardage: 5806),
+                CourseTee(name: "Silver / Blue (Women)", par: 72, rating: 72.9, slope: 136, yardage: 5559),
+                CourseTee(name: "Blue (Women)", par: 72, rating: 72.0, slope: 132, yardage: 5356),
+                CourseTee(name: "Blue / Red (Women)", par: 72, rating: 70.0, slope: 125, yardage: 4962),
+                CourseTee(name: "Red (Women)", par: 72, rating: 68.2, slope: 116, yardage: 4630)
             ],
             holes: makeHoles(
                 pars: [4, 3, 5, 4, 4, 3, 4, 4, 5, 4, 5, 3, 4, 3, 5, 4, 4, 4],
@@ -119,15 +135,17 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             name: "Bandon Dunes",
             location: "Bandon, OR",
             tees: [
-                CourseTee(name: "Black", par: 72, rating: 74.1, slope: 143, yardage: 6732),
-                CourseTee(name: "Black/Green", par: 72, rating: 72.9, slope: 141, yardage: 6477),
-                CourseTee(name: "Green", par: 72, rating: 71.7, slope: 139, yardage: 6221),
-                CourseTee(name: "Green/Gold", par: 72, rating: 70.6, slope: 136, yardage: 5969),
-                CourseTee(name: "Gold", par: 72, rating: 69.5, slope: 133, yardage: 5716),
-                CourseTee(name: "Gold/Orange", par: 72, rating: 67.4, slope: 130, yardage: 5394),
-                CourseTee(name: "Orange", par: 72, rating: 66.6, slope: 126, yardage: 5072),
-                CourseTee(name: "Orange/Royal Blue", par: 72, rating: 64.1, slope: 114, yardage: 4509),
-                CourseTee(name: "Royal Blue", par: 72, rating: 61.5, slope: 101, yardage: 3945)
+                CourseTee(name: "Tournament", par: 72, rating: 75.9, slope: 145, yardage: 7315),
+                CourseTee(name: "Black", par: 72, rating: 73.5, slope: 143, yardage: 6732),
+                CourseTee(name: "Green", par: 72, rating: 71.1, slope: 133, yardage: 6221),
+                CourseTee(name: "Gold", par: 72, rating: 69.1, slope: 124, yardage: 5716),
+                CourseTee(name: "Orange", par: 72, rating: 65.5, slope: 114, yardage: 5040),
+                CourseTee(name: "Royal Blue", par: 68, rating: 61.6, slope: 105, yardage: 3986),
+                CourseTee(name: "Black (Women)", par: 72, rating: 79.6, slope: 145, yardage: 6732),
+                CourseTee(name: "Green (Women)", par: 72, rating: 76.8, slope: 139, yardage: 6221),
+                CourseTee(name: "Gold (Women)", par: 72, rating: 74.2, slope: 133, yardage: 5716),
+                CourseTee(name: "Orange (Women)", par: 72, rating: 71.6, slope: 126, yardage: 5040),
+                CourseTee(name: "Royal Blue (Women)", par: 68, rating: 64.5, slope: 111, yardage: 3986)
             ],
             holes: makeHoles(
                 pars: [4, 3, 5, 4, 4, 3, 4, 4, 5, 4, 4, 3, 5, 4, 3, 4, 4, 5],
@@ -139,15 +157,12 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             name: "Pacific Dunes",
             location: "Bandon, OR",
             tees: [
-                CourseTee(name: "Black", par: 71, rating: 73.2, slope: 143, yardage: 6633),
-                CourseTee(name: "Black/Green", par: 71, rating: 72.0, slope: 139, yardage: 6388),
-                CourseTee(name: "Green", par: 71, rating: 70.8, slope: 135, yardage: 6142),
-                CourseTee(name: "Green/Gold", par: 71, rating: 69.9, slope: 133, yardage: 5959),
-                CourseTee(name: "Gold", par: 71, rating: 68.9, slope: 131, yardage: 5775),
-                CourseTee(name: "Gold/Orange", par: 71, rating: 67.3, slope: 127, yardage: 5432),
+                CourseTee(name: "Black", par: 71, rating: 73.0, slope: 142, yardage: 6633),
+                CourseTee(name: "Green", par: 71, rating: 70.7, slope: 133, yardage: 6142),
+                CourseTee(name: "Gold", par: 71, rating: 68.6, slope: 129, yardage: 5775),
                 CourseTee(name: "Orange", par: 71, rating: 65.6, slope: 122, yardage: 5088),
-                CourseTee(name: "Orange/Royal Blue", par: 71, rating: 63.0, slope: 116, yardage: 4504),
-                CourseTee(name: "Royal Blue", par: 71, rating: 60.4, slope: 109, yardage: 3920)
+                CourseTee(name: "Royal Blue", par: 71, rating: 60.4, slope: 109, yardage: 3920),
+                CourseTee(name: "Orange (Women)", par: 71, rating: 70.3, slope: 131, yardage: 5088)
             ],
             holes: makeHoles(
                 pars: [4, 4, 5, 4, 3, 4, 4, 4, 4, 3, 3, 5, 4, 3, 5, 4, 3, 5],
@@ -159,15 +174,15 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             name: "Bandon Trails",
             location: "Bandon, OR",
             tees: [
-                CourseTee(name: "Black", par: 71, rating: 73.6, slope: 130, yardage: 6759),
-                CourseTee(name: "Black/Green", par: 71, rating: 72.4, slope: 130, yardage: 6503),
-                CourseTee(name: "Green", par: 71, rating: 71.1, slope: 129, yardage: 6247),
-                CourseTee(name: "Green/Gold", par: 71, rating: 69.9, slope: 126, yardage: 5999),
+                CourseTee(name: "Black", par: 71, rating: 73.6, slope: 130, yardage: 6788),
+                CourseTee(name: "Green", par: 71, rating: 71.1, slope: 129, yardage: 6249),
                 CourseTee(name: "Gold", par: 71, rating: 68.7, slope: 122, yardage: 5751),
-                CourseTee(name: "Gold/Orange", par: 71, rating: 67.4, slope: 120, yardage: 5426),
-                CourseTee(name: "Orange", par: 71, rating: 66.1, slope: 117, yardage: 5100),
-                CourseTee(name: "Orange/Royal Blue", par: 71, rating: 63.7, slope: 111, yardage: 4464),
-                CourseTee(name: "Royal Blue", par: 71, rating: 61.2, slope: 105, yardage: 3827)
+                CourseTee(name: "Orange", par: 71, rating: 66.1, slope: 117, yardage: 5097),
+                CourseTee(name: "Royal Blue", par: 71, rating: 61.2, slope: 105, yardage: 3937),
+                CourseTee(name: "Green (Women)", par: 71, rating: 77.6, slope: 138, yardage: 6249),
+                CourseTee(name: "Gold (Women)", par: 71, rating: 74.6, slope: 132, yardage: 5751),
+                CourseTee(name: "Orange (Women)", par: 71, rating: 70.8, slope: 122, yardage: 5097),
+                CourseTee(name: "Royal Blue (Women)", par: 71, rating: 63.8, slope: 105, yardage: 3937)
             ],
             holes: makeHoles(
                 pars: [4, 3, 5, 4, 3, 4, 4, 4, 5, 4, 4, 3, 4, 4, 4, 5, 3, 4],
@@ -179,15 +194,15 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             name: "Old Macdonald",
             location: "Bandon, OR",
             tees: [
-                CourseTee(name: "Black", par: 71, rating: 74.1, slope: 133, yardage: 6978),
-                CourseTee(name: "Black/Green", par: 71, rating: 72.7, slope: 130, yardage: 6665),
-                CourseTee(name: "Green", par: 71, rating: 71.3, slope: 127, yardage: 6352),
-                CourseTee(name: "Green/Gold", par: 71, rating: 69.8, slope: 123, yardage: 6021),
-                CourseTee(name: "Gold", par: 71, rating: 68.2, slope: 119, yardage: 5690),
-                CourseTee(name: "Gold/Orange", par: 71, rating: 66.7, slope: 112, yardage: 5367),
-                CourseTee(name: "Orange", par: 71, rating: 65.2, slope: 104, yardage: 5044),
-                CourseTee(name: "Orange/Royal Blue", par: 71, rating: 63.9, slope: 104, yardage: 4662),
-                CourseTee(name: "Royal Blue", par: 71, rating: 62.6, slope: 104, yardage: 4280)
+                CourseTee(name: "Black", par: 71, rating: 74.4, slope: 131, yardage: 6944),
+                CourseTee(name: "Green", par: 71, rating: 71.6, slope: 125, yardage: 6320),
+                CourseTee(name: "Gold", par: 71, rating: 68.0, slope: 116, yardage: 5658),
+                CourseTee(name: "Orange", par: 71, rating: 65.2, slope: 104, yardage: 4985),
+                CourseTee(name: "Royal Blue", par: 71, rating: 62.5, slope: 101, yardage: 4040),
+                CourseTee(name: "Green (Women)", par: 71, rating: 77.8, slope: 137, yardage: 6320),
+                CourseTee(name: "Gold (Women)", par: 71, rating: 74.1, slope: 126, yardage: 5658),
+                CourseTee(name: "Orange (Women)", par: 71, rating: 70.1, slope: 117, yardage: 4985),
+                CourseTee(name: "Royal Blue (Women)", par: 71, rating: 66.1, slope: 107, yardage: 4040)
             ],
             holes: makeHoles(
                 pars: [4, 3, 4, 4, 3, 5, 4, 3, 4, 4, 4, 3, 4, 4, 5, 4, 5, 4],
@@ -199,15 +214,16 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             name: "Sheep Ranch",
             location: "Bandon, OR",
             tees: [
-                CourseTee(name: "Black", par: 72, rating: 72.1, slope: 122, yardage: 6636),
-                CourseTee(name: "Black/Green", par: 72, rating: 71.1, slope: 119, yardage: 6441),
+                CourseTee(name: "Black", par: 72, rating: 71.9, slope: 121, yardage: 6636),
                 CourseTee(name: "Green", par: 72, rating: 70.0, slope: 116, yardage: 6245),
-                CourseTee(name: "Green/Gold", par: 72, rating: 69.1, slope: 114, yardage: 6028),
-                CourseTee(name: "Gold", par: 72, rating: 68.1, slope: 111, yardage: 5810),
-                CourseTee(name: "Gold/Orange", par: 72, rating: 66.7, slope: 108, yardage: 5477),
-                CourseTee(name: "Orange", par: 72, rating: 65.2, slope: 105, yardage: 5144),
-                CourseTee(name: "Orange/Royal Blue", par: 72, rating: 63.1, slope: 101, yardage: 4544),
-                CourseTee(name: "Royal Blue", par: 72, rating: 61.0, slope: 96, yardage: 3943)
+                CourseTee(name: "Gold", par: 72, rating: 67.9, slope: 109, yardage: 5810),
+                CourseTee(name: "Orange", par: 72, rating: 65.0, slope: 102, yardage: 5144),
+                CourseTee(name: "Royal Blue", par: 68, rating: 61.0, slope: 97, yardage: 3943),
+                CourseTee(name: "Black (Women)", par: 72, rating: 78.3, slope: 134, yardage: 6636),
+                CourseTee(name: "Green (Women)", par: 74, rating: 76.2, slope: 129, yardage: 6245),
+                CourseTee(name: "Gold (Women)", par: 72, rating: 73.8, slope: 124, yardage: 5810),
+                CourseTee(name: "Orange (Women)", par: 72, rating: 69.8, slope: 112, yardage: 5144),
+                CourseTee(name: "Royal Blue (Women)", par: 68, rating: 62.8, slope: 99, yardage: 3943)
             ],
             holes: makeHoles(
                 pars: [5, 4, 3, 4, 3, 4, 3, 4, 4, 4, 5, 4, 5, 4, 4, 3, 4, 5],
@@ -288,15 +304,15 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             name: "TPC Sawgrass - Stadium Course",
             location: "Ponte Vedra Beach, FL",
             tees: [
-                CourseTee(name: "The Players", par: 72, rating: 76.8, slope: 155, yardage: 7352),
-                CourseTee(name: "Blue", par: 72, rating: 73.9, slope: 148, yardage: 6670),
-                CourseTee(name: "Blue/White", par: 72, rating: 72.3, slope: 144, yardage: 6396),
-                CourseTee(name: "White", par: 72, rating: 70.8, slope: 138, yardage: 6086),
-                CourseTee(name: "White/Green", par: 72, rating: 68.1, slope: 126, yardage: 5509),
-                CourseTee(name: "Green", par: 72, rating: 65.8, slope: 116, yardage: 5019),
-                CourseTee(name: "White (Women)", par: 72, rating: 77.4, slope: 149, yardage: 6086),
-                CourseTee(name: "White/Green (Women)", par: 72, rating: 74.0, slope: 141, yardage: 5509),
-                CourseTee(name: "Green (Women)", par: 72, rating: 71.1, slope: 134, yardage: 5019)
+                CourseTee(name: "TPC", par: 72, rating: 76.8, slope: 155, yardage: 7271),
+                CourseTee(name: "Blue", par: 72, rating: 73.9, slope: 148, yardage: 6631),
+                CourseTee(name: "Blue / White", par: 72, rating: 72.3, slope: 144, yardage: 6347),
+                CourseTee(name: "White", par: 72, rating: 70.8, slope: 138, yardage: 6018),
+                CourseTee(name: "White / Green", par: 72, rating: 68.1, slope: 126, yardage: 5448),
+                CourseTee(name: "Green", par: 72, rating: 65.8, slope: 116, yardage: 4984),
+                CourseTee(name: "White (Women)", par: 72, rating: 77.4, slope: 149, yardage: 6018),
+                CourseTee(name: "White / Green (Women)", par: 72, rating: 74.0, slope: 141, yardage: 5448),
+                CourseTee(name: "Green (Women)", par: 72, rating: 71.1, slope: 134, yardage: 4984)
             ],
             holes: makeHoles(
                 pars: [4, 5, 3, 4, 4, 4, 4, 3, 5, 4, 5, 4, 3, 4, 4, 5, 3, 4],
@@ -309,14 +325,14 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             location: "Ponte Vedra Beach, FL",
             tees: [
                 CourseTee(name: "TPC", par: 72, rating: 74.0, slope: 134, yardage: 6847),
-                CourseTee(name: "Blue", par: 72, rating: 72.1, slope: 131, yardage: 6502),
-                CourseTee(name: "Blue/White", par: 72, rating: 71.0, slope: 128, yardage: 6272),
-                CourseTee(name: "White", par: 72, rating: 70.1, slope: 127, yardage: 6079),
-                CourseTee(name: "White/Green", par: 72, rating: 67.8, slope: 117, yardage: 5526),
-                CourseTee(name: "Green", par: 72, rating: 65.9, slope: 113, yardage: 5126),
-                CourseTee(name: "White (Women)", par: 72, rating: 76.2, slope: 138, yardage: 6079),
-                CourseTee(name: "White/Green (Women)", par: 72, rating: 72.7, slope: 128, yardage: 5526),
-                CourseTee(name: "Green (Women)", par: 72, rating: 70.3, slope: 124, yardage: 5126)
+                CourseTee(name: "Blue", par: 72, rating: 72.1, slope: 131, yardage: 6497),
+                CourseTee(name: "Blue/White", par: 72, rating: 71.0, slope: 128, yardage: 6261),
+                CourseTee(name: "White", par: 72, rating: 70.1, slope: 127, yardage: 6062),
+                CourseTee(name: "White/Green", par: 72, rating: 67.8, slope: 117, yardage: 5515),
+                CourseTee(name: "Green", par: 72, rating: 65.9, slope: 113, yardage: 5136),
+                CourseTee(name: "White (Women)", par: 72, rating: 76.2, slope: 138, yardage: 6062),
+                CourseTee(name: "White/Green (Women)", par: 72, rating: 72.7, slope: 128, yardage: 5515),
+                CourseTee(name: "Green (Women)", par: 72, rating: 70.3, slope: 124, yardage: 5136)
             ],
             holes: makeHoles(
                 pars: [5, 3, 4, 4, 3, 4, 4, 5, 4, 4, 3, 4, 4, 3, 4, 5, 5, 4],
@@ -353,14 +369,18 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             name: "TPC Boston",
             location: "Norton, MA",
             tees: [
-                CourseTee(name: "Championship", par: 73, rating: 77.2, slope: 154, yardage: 7261),
-                CourseTee(name: "Gold", par: 73, rating: 74.7, slope: 145, yardage: 7011),
-                CourseTee(name: "Black", par: 73, rating: 72.4, slope: 139, yardage: 6484),
-                CourseTee(name: "Blended", par: 73, rating: 71.3, slope: 136, yardage: 6284),
-                CourseTee(name: "White", par: 73, rating: 70.6, slope: 133, yardage: 6117),
-                CourseTee(name: "Blue", par: 73, rating: 66.4, slope: 123, yardage: 5201),
-                CourseTee(name: "White (Women)", par: 73, rating: 76.4, slope: 137, yardage: 6117),
-                CourseTee(name: "Blue (Women)", par: 73, rating: 72.1, slope: 132, yardage: 5201)
+                CourseTee(name: "Championship", par: 72, rating: 76.6, slope: 155, yardage: 7241),
+                CourseTee(name: "Gold", par: 72, rating: 75.0, slope: 149, yardage: 6990),
+                CourseTee(name: "Black", par: 72, rating: 72.8, slope: 137, yardage: 6459),
+                CourseTee(name: "Blended (W/B combo)", par: 72, rating: 71.6, slope: 133, yardage: 6193),
+                CourseTee(name: "White", par: 72, rating: 70.3, slope: 132, yardage: 5985),
+                CourseTee(name: "White/Blue", par: 72, rating: 68.3, slope: 129, yardage: 5536),
+                CourseTee(name: "Blue", par: 72, rating: 66.1, slope: 122, yardage: 5070),
+                CourseTee(name: "Gold (Women)", par: 72, rating: 82.1, slope: 155, yardage: 6990),
+                CourseTee(name: "Black (Women)", par: 72, rating: 78.9, slope: 155, yardage: 6459),
+                CourseTee(name: "White (Women)", par: 72, rating: 75.6, slope: 138, yardage: 5985),
+                CourseTee(name: "White/Blue (Women)", par: 72, rating: 73.4, slope: 132, yardage: 5536),
+                CourseTee(name: "Blue (Women)", par: 72, rating: 70.9, slope: 126, yardage: 5070)
             ],
             holes: makeHoles(
                 pars: [4, 5, 3, 4, 4, 4, 5, 3, 4, 4, 3, 5, 4, 5, 4, 3, 4, 5],
@@ -407,16 +427,17 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             name: "Erin Hills",
             location: "Erin, WI",
             tees: [
-                CourseTee(name: "Black", par: 72, rating: 77.9, slope: 145, yardage: 7800),
-                CourseTee(name: "Blue", par: 72, rating: 75.2, slope: 140, yardage: 7316),
-                CourseTee(name: "Green", par: 72, rating: 73.2, slope: 135, yardage: 6744),
-                CourseTee(name: "White", par: 72, rating: 70.5, slope: 129, yardage: 6233),
-                CourseTee(name: "White (Women)", par: 72, rating: 75.5, slope: 131, yardage: 6233),
-                CourseTee(name: "Gold", par: 72, rating: 69.2, slope: 118, yardage: 5082)
+                CourseTee(name: "Back", par: 73, rating: 80.5, slope: 154, yardage: 8348),
+                CourseTee(name: "Black", par: 73, rating: 77.7, slope: 141, yardage: 7945),
+                CourseTee(name: "Blue", par: 73, rating: 74.2, slope: 135, yardage: 7258),
+                CourseTee(name: "Green", par: 73, rating: 71.4, slope: 125, yardage: 6838),
+                CourseTee(name: "Yellow", par: 73, rating: 67.3, slope: 114, yardage: 5631),
+                CourseTee(name: "Yellow (Women)", par: 73, rating: 72.1, slope: 123, yardage: 5631),
+                CourseTee(name: "Red", par: 73, rating: 69.2, slope: 116, yardage: 4810)
             ],
             holes: makeHoles(
-                pars: [5, 4, 4, 4, 4, 3, 5, 4, 3, 4, 4, 4, 3, 5, 4, 3, 4, 5],
-                strokeIndexes: [3, 13, 7, 11, 9, 15, 1, 5, 17, 4, 14, 10, 18, 2, 12, 16, 8, 6]
+                pars: [5, 4, 4, 4, 4, 3, 5, 4, 3, 5, 4, 4, 3, 5, 4, 3, 4, 5],
+                strokeIndexes: [5, 15, 7, 13, 9, 11, 3, 1, 17, 4, 14, 8, 18, 12, 10, 16, 6, 2]
             )
         ),
         CourseCatalogEntry(
@@ -428,11 +449,11 @@ struct CourseCatalogEntry: Identifiable, Hashable {
                 CourseTee(name: "Blue", par: 72, rating: 74.2, slope: 145, yardage: 7142),
                 CourseTee(name: "Green", par: 72, rating: 71.9, slope: 141, yardage: 6663),
                 CourseTee(name: "White", par: 72, rating: 70.4, slope: 137, yardage: 6360),
-                CourseTee(name: "White/Red", par: 72, rating: 68.9, slope: 133, yardage: 6037),
+                CourseTee(name: "White / Red", par: 72, rating: 68.6, slope: 134, yardage: 5922),
                 CourseTee(name: "Red", par: 72, rating: 66.4, slope: 129, yardage: 5564),
                 CourseTee(name: "Green (Women)", par: 72, rating: 79.4, slope: 143, yardage: 6663),
                 CourseTee(name: "White (Women)", par: 72, rating: 76.9, slope: 137, yardage: 6360),
-                CourseTee(name: "White/Red (Women)", par: 72, rating: 75.3, slope: 134, yardage: 6037),
+                CourseTee(name: "White / Red (Women)", par: 72, rating: 75.5, slope: 133, yardage: 5922),
                 CourseTee(name: "Red (Women)", par: 72, rating: 72.7, slope: 129, yardage: 5564)
             ],
             holes: makeHoles(
