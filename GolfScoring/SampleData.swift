@@ -95,8 +95,12 @@ extension GolfTrip {
 
         for sampleTrip in sampleTrips {
             if let existingTripIndex = mergedTrips.firstIndex(where: { $0.name == sampleTrip.name }) {
-                for sampleRound in sampleTrip.rounds where !mergedTrips[existingTripIndex].rounds.containsSampleEquivalent(to: sampleRound) {
-                    mergedTrips[existingTripIndex].rounds.append(sampleRound)
+                for sampleRound in sampleTrip.rounds {
+                    if let existingRoundIndex = mergedTrips[existingTripIndex].rounds.sampleEquivalentIndex(to: sampleRound) {
+                        mergedTrips[existingTripIndex].rounds[existingRoundIndex] = sampleRound
+                    } else {
+                        mergedTrips[existingTripIndex].rounds.append(sampleRound)
+                    }
                 }
                 mergedTrips[existingTripIndex].syncDateToFirstRound()
             }
@@ -122,7 +126,11 @@ extension MatchRound {
 
 private extension Array where Element == RoundSummary {
     func containsSampleEquivalent(to sampleRound: RoundSummary) -> Bool {
-        contains { round in
+        sampleEquivalentIndex(to: sampleRound) != nil
+    }
+
+    func sampleEquivalentIndex(to sampleRound: RoundSummary) -> Int? {
+        firstIndex { round in
             round.normalizedSampleCourseName == sampleRound.normalizedSampleCourseName &&
             Calendar.current.isDate(round.date, inSameDayAs: sampleRound.date)
         }
