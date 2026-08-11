@@ -90,7 +90,7 @@ struct ContentView: View {
         }
         .onReceive(refreshTimer) { _ in
             Task {
-                await refreshFromCloud()
+                await refreshFromCloudIfChanged()
             }
         }
     }
@@ -111,6 +111,15 @@ struct ContentView: View {
 
     private func refreshFromCloud() async {
         guard let snapshot = await cloudSync.fetchCloudSnapshot() else { return }
+        applyCloudSnapshot(snapshot)
+    }
+
+    private func refreshFromCloudIfChanged() async {
+        guard let snapshot = await cloudSync.fetchCloudSnapshotIfChanged() else { return }
+        applyCloudSnapshot(snapshot)
+    }
+
+    private func applyCloudSnapshot(_ snapshot: AppSnapshot) {
         guard snapshot.savedAt >= latestLocalChangeDate else { return }
         isApplyingCloudSnapshot = true
         account.applyCloudGroupPlayers(snapshot.groupPlayers)

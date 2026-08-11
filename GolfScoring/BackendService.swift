@@ -71,6 +71,14 @@ struct SupabaseSnapshotClient {
         }
     }
 
+    private struct SnapshotVersionRow: Codable {
+        var updatedAt: Date?
+
+        enum CodingKeys: String, CodingKey {
+            case updatedAt = "updated_at"
+        }
+    }
+
     private let session: URLSession
 
     init(session: URLSession = .shared) {
@@ -96,6 +104,27 @@ struct SupabaseSnapshotClient {
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
         return try JSONDecoder.cloud.decode([SnapshotRow].self, from: data).first?.payload
+    }
+
+    func fetchSnapshotUpdatedAt() async throws -> Date? {
+        guard SupabaseConfiguration.isConfigured else { throw CloudSyncError.notConfigured }
+        guard var components = URLComponents(string: "\(SupabaseConfiguration.urlString)/rest/v1/app_snapshots") else {
+            throw CloudSyncError.invalidURL
+        }
+
+        components.queryItems = [
+            URLQueryItem(name: "id", value: "eq.\(BackendConfiguration.snapshotID)"),
+            URLQueryItem(name: "select", value: "updated_at")
+        ]
+
+        guard let url = components.url else { throw CloudSyncError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        addHeaders(to: &request)
+
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder.cloud.decode([SnapshotVersionRow].self, from: data).first?.updatedAt
     }
 
     func upsertSnapshot(_ snapshot: AppSnapshot) async throws {

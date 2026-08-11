@@ -44,6 +44,7 @@ final class CloudSyncStore: ObservableObject {
 
     private let client = SupabaseSnapshotClient()
     private var lastEncodedSnapshot: Data?
+    private var lastKnownCloudUpdatedAt: Date?
 
     var isConfigured: Bool {
         SupabaseConfiguration.isConfigured
@@ -63,6 +64,23 @@ final class CloudSyncStore: ObservableObject {
             }
             state = .synced(Date())
             return snapshot
+        } catch {
+            state = .failed(error.localizedDescription)
+            return nil
+        }
+    }
+
+    func fetchCloudSnapshotIfChanged() async -> AppSnapshot? {
+        guard isConfigured else {
+            state = .localOnly
+            return nil
+        }
+
+        do {
+            let cloudUpdatedAt = try await client.fetchSnapshotUpdatedAt()
+            guard cloudUpdatedAt != lastKnownCloudUpdatedAt else { return nil }
+            lastKnownCloudUpdatedAt = cloudUpdatedAt
+            return await fetchCloudSnapshot()
         } catch {
             state = .failed(error.localizedDescription)
             return nil
