@@ -15,22 +15,27 @@ struct ScorecardView: View {
     @State private var savedRoundID: UUID?
     @State private var savedHoleSignatures: [Int: String] = [:]
     @State private var lastCheckpointText: String?
+    @State private var didConfigureInitialHole = false
     @FocusState private var focusedScore: ScoreFocus?
 
     private var hole: Hole {
         store.round.holes.first { $0.number == selectedHole } ?? store.round.holes.first ?? Hole(number: 1, par: 4, strokeIndex: 1)
     }
     private var allHolesComplete: Bool { store.round.completedHoles == store.round.holes.count }
+    private var holeNumbers: [Int] {
+        store.round.holes.map(\.number).sorted()
+    }
+    private var isFirstSelectedHole: Bool {
+        selectedHole == holeNumbers.first
+    }
+    private var isLastSelectedHole: Bool {
+        selectedHole == holeNumbers.last
+    }
     private let holeColumns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 6)
-    private let teamOneColor = Color.green
-    private let teamTwoColor = Color.blue
+    private let teamOneColor = AppColors.joshMatt
+    private let teamTwoColor = AppColors.jeffShane
     private var orderedGolfers: [Golfer] {
-        store.round.golfers.sorted {
-            if $0.team == $1.team {
-                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-            }
-            return $0.team < $1.team
-        }
+        store.round.golfers
     }
 
     init(
@@ -57,6 +62,7 @@ struct ScorecardView: View {
                 } else {
                     holePicker
                     scoreEntryCard
+                        .id(selectedHole)
                     navigationButtons
                 }
             }
@@ -64,11 +70,6 @@ struct ScorecardView: View {
         }
         .navigationTitle(store.round.name)
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            if focusedScore == nil {
-                focusFirstGolfer(on: selectedHole)
-            }
-        }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if isSubmitted {
@@ -83,6 +84,9 @@ struct ScorecardView: View {
                 ProfileMenuButton(account: account)
             }
         }
+        .onAppear {
+            configureInitialHole()
+        }
     }
 
     private var statusCard: some View {
@@ -91,7 +95,7 @@ struct ScorecardView: View {
 
             Text(isSubmitted ? "ROUND SUBMITTED" : store.round.statusText)
                 .font(.largeTitle.bold())
-                .foregroundStyle(.green)
+                .foregroundStyle(statusColor)
                 .multilineTextAlignment(.center)
             Text("Through \(store.round.completedHoles) of \(store.round.holes.count) holes")
                 .foregroundStyle(.secondary)
@@ -157,8 +161,7 @@ struct ScorecardView: View {
             LazyVGrid(columns: holeColumns, spacing: 8) {
                 ForEach(store.round.holes) { courseHole in
                     Button {
-                        selectedHole = courseHole.number
-                        focusFirstGolfer(on: courseHole.number)
+                        moveToHole(courseHole.number, focusFirstScore: false)
                     } label: {
                         Text("\(courseHole.number)")
                             .font(.subheadline.monospacedDigit().bold())
@@ -192,23 +195,21 @@ struct ScorecardView: View {
                     .transition(.opacity)
             }
 
-            ForEach(1...2, id: \.self) { team in
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(store.round.teamName(team).uppercased())
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Score entry order")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
 
-                    ForEach(orderedGolfers.filter { $0.team == team }) { golfer in
-                        ScoreEntryRow(
-                            golfer: golfer,
-                            strokes: store.round.strokes(for: golfer, on: hole),
-                            net: store.round.netScore(for: golfer, on: hole),
-                            stableford: store.round.stablefordPoints(for: golfer, on: hole),
-                            gross: scoreBinding(for: golfer, on: hole),
-                            focus: ScoreFocus(holeNumber: hole.number, golferID: golfer.id),
-                            focusedScore: $focusedScore
-                        )
-                    }
+                ForEach(orderedGolfers) { golfer in
+                    ScoreEntryRow(
+                        golfer: golfer,
+                        strokes: store.round.strokes(for: golfer, on: hole),
+                        net: store.round.netScore(for: golfer, on: hole),
+                        stableford: store.round.stablefordPoints(for: golfer, on: hole),
+                        gross: scoreBinding(for: golfer, on: hole),
+                        focus: ScoreFocus(holeNumber: hole.number, golferID: golfer.id),
+                        focusedScore: $focusedScore
+                    )
                 }
             }
         }
@@ -220,17 +221,17 @@ struct ScorecardView: View {
         VStack(spacing: 12) {
             HStack {
                 Button {
-                    moveToHole(selectedHole - 1)
+                    moveToAdjacentHole(offset: -1, focusFirstScore: false)
                 } label: {
                     Label("Previous", systemImage: "chevron.left")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .disabled(selectedHole == 1)
+                .disabled(isFirstSelectedHole)
 
-                if selectedHole < store.round.holes.count {
+                if !isLastSelectedHole {
                     Button {
-                        moveToHole(selectedHole + 1)
+                        moveToAdjacentHole(offset: 1, focusFirstScore: false)
                     } label: {
                         Label("Next", systemImage: "chevron.right")
                             .frame(maxWidth: .infinity)
@@ -239,7 +240,7 @@ struct ScorecardView: View {
                 }
             }
 
-            if selectedHole == store.round.holes.count && !isEditingSubmittedRound {
+            if isLastSelectedHole && !isEditingSubmittedRound {
                 Button {
                     saveCurrentRound()
                     isSubmitted = true
@@ -301,24 +302,42 @@ struct ScorecardView: View {
             },
             set: { newValue in
                 let wasComplete = store.round.isHoleComplete(hole)
-                let digits = sanitizedScoreText(from: newValue)
+                let currentValue = store.round.scores[golfer.id]?[hole.number]?.gross.map(String.init) ?? ""
+                let digits = sanitizedScoreText(from: newValue, replacing: currentValue)
                 let score = Int(digits)
                 store.setScore(score, golferID: golfer.id, holeNumber: hole.number)
                 checkpointIfNeeded(for: hole, wasComplete: wasComplete)
 
+                if wasComplete {
+                    focusedScore = nil
+                    return
+                }
+
                 if let score, shouldAutoAdvance(scoreText: digits, score: score) {
-                    advanceAfterScore(for: golfer, on: hole)
+                    advanceAfterScore(for: golfer, on: hole, wasComplete: wasComplete)
                 }
             }
         )
     }
 
-    private func sanitizedScoreText(from input: String) -> String {
+    private func sanitizedScoreText(from input: String, replacing currentValue: String) -> String {
         let digitsOnly = input.filter(\.isNumber)
         guard let firstDigit = digitsOnly.first else { return "" }
 
-        if firstDigit == "1", digitsOnly.dropFirst().first == "0" {
+        if digitsOnly == "10" || digitsOnly.hasSuffix("10") {
             return "10"
+        }
+
+        let currentDigits = currentValue.filter(\.isNumber)
+        if !currentDigits.isEmpty,
+           digitsOnly.hasPrefix(currentDigits),
+           digitsOnly.count > currentDigits.count,
+           let typedDigit = digitsOnly.dropFirst(currentDigits.count).last {
+            return String(typedDigit)
+        }
+
+        if digitsOnly.count > 1, let lastDigit = digitsOnly.last {
+            return String(lastDigit)
         }
 
         return String(firstDigit)
@@ -332,10 +351,54 @@ struct ScorecardView: View {
         return scoreText.count == 1 || score == 10
     }
 
-    private func moveToHole(_ holeNumber: Int) {
-        let clampedHole = min(max(1, holeNumber), store.round.holes.count)
-        selectedHole = clampedHole
-        focusFirstGolfer(on: clampedHole)
+    private func moveToHole(_ holeNumber: Int, focusFirstScore: Bool = false) {
+        let availableHoles = holeNumbers
+        guard !availableHoles.isEmpty else { return }
+        let targetHole = availableHoles.contains(holeNumber) ? holeNumber : nearestHoleNumber(to: holeNumber, in: availableHoles)
+        focusedScore = nil
+        withAnimation(.snappy) {
+            selectedHole = targetHole
+        }
+        if focusFirstScore {
+            DispatchQueue.main.async {
+                focusFirstGolfer(on: targetHole)
+            }
+        }
+    }
+
+    private func moveToAdjacentHole(offset: Int, focusFirstScore: Bool = false) {
+        guard let currentIndex = holeNumbers.firstIndex(of: selectedHole) else {
+            moveToHole(selectedHole, focusFirstScore: focusFirstScore)
+            return
+        }
+
+        let nextIndex = currentIndex + offset
+        guard holeNumbers.indices.contains(nextIndex) else { return }
+        moveToHole(holeNumbers[nextIndex], focusFirstScore: focusFirstScore)
+    }
+
+    private func nearestHoleNumber(to requestedHole: Int, in holes: [Int]) -> Int {
+        holes.min { abs($0 - requestedHole) < abs($1 - requestedHole) } ?? requestedHole
+    }
+
+    private func configureInitialHole() {
+        guard !didConfigureInitialHole else { return }
+        didConfigureInitialHole = true
+
+        if let savedRoundID {
+            isSubmitted = allHolesComplete
+            isEditingSubmittedRound = true
+            self.savedRoundID = savedRoundID
+        }
+
+        if !holeNumbers.contains(selectedHole) {
+            selectedHole = holeNumbers.first ?? 1
+        }
+
+        if !allHolesComplete,
+           let firstIncompleteHole = store.round.holes.sorted(by: { $0.number < $1.number }).first(where: { !store.round.isHoleComplete($0) }) {
+            selectedHole = firstIncompleteHole.number
+        }
     }
 
     private func focusFirstGolfer(on holeNumber: Int) {
@@ -346,17 +409,54 @@ struct ScorecardView: View {
         focusedScore = ScoreFocus(holeNumber: holeNumber, golferID: firstGolfer.id)
     }
 
-    private func advanceAfterScore(for golfer: Golfer, on hole: Hole) {
+    private func advanceAfterScore(for golfer: Golfer, on hole: Hole, wasComplete: Bool) {
+        if wasComplete {
+            focusedScore = nil
+            return
+        }
+
+        if store.round.isHoleComplete(hole) {
+            moveToNextIncompleteHole(after: hole.number)
+            return
+        }
+
         guard let currentIndex = orderedGolfers.firstIndex(where: { $0.id == golfer.id }) else {
             focusedScore = nil
             return
         }
 
         let nextIndex = orderedGolfers.index(after: currentIndex)
-        if nextIndex < orderedGolfers.endIndex {
+        if nextIndex < orderedGolfers.endIndex,
+           store.round.scores[orderedGolfers[nextIndex].id]?[hole.number]?.gross == nil {
             focusedScore = ScoreFocus(holeNumber: hole.number, golferID: orderedGolfers[nextIndex].id)
-        } else if hole.number < store.round.holes.count {
-            moveToHole(hole.number + 1)
+            return
+        }
+
+        if let nextMissingGolfer = orderedGolfers.first(where: { store.round.scores[$0.id]?[hole.number]?.gross == nil }) {
+            focusedScore = ScoreFocus(holeNumber: hole.number, golferID: nextMissingGolfer.id)
+            return
+        }
+
+        focusedScore = nil
+    }
+
+    private func moveToNextIncompleteHole(after holeNumber: Int) {
+        if let nextIncompleteHole = store.round.holes
+            .sorted(by: { $0.number < $1.number })
+            .first(where: { $0.number > holeNumber && !store.round.isHoleComplete($0) }) {
+            moveToHole(nextIncompleteHole.number, focusFirstScore: true)
+            return
+        }
+
+        if let firstIncompleteHole = store.round.holes
+            .sorted(by: { $0.number < $1.number })
+            .first(where: { !store.round.isHoleComplete($0) }) {
+            moveToHole(firstIncompleteHole.number, focusFirstScore: true)
+            return
+        }
+
+        if let lastHole = holeNumbers.last {
+            moveToHole(lastHole, focusFirstScore: false)
         } else {
             focusedScore = nil
         }
@@ -396,10 +496,10 @@ struct ScorecardView: View {
         let nextIndex = currentIndex + offset
         if orderedGolfers.indices.contains(nextIndex) {
             focusedScore = ScoreFocus(holeNumber: selectedHole, golferID: orderedGolfers[nextIndex].id)
-        } else if offset > 0, selectedHole < store.round.holes.count {
-            moveToHole(selectedHole + 1)
-        } else if offset < 0, selectedHole > 1 {
-            selectedHole -= 1
+        } else if offset > 0, !isLastSelectedHole {
+            moveToAdjacentHole(offset: 1, focusFirstScore: true)
+        } else if offset < 0, !isFirstSelectedHole {
+            moveToAdjacentHole(offset: -1, focusFirstScore: false)
             if let lastGolfer = orderedGolfers.last {
                 focusedScore = ScoreFocus(holeNumber: selectedHole, golferID: lastGolfer.id)
             }
@@ -419,8 +519,18 @@ struct ScorecardView: View {
         case 2:
             return teamTwoColor
         default:
-            return .gray
+            return AppColors.push
         }
+    }
+
+    private var statusColor: Color {
+        if store.round.matchDelta > 0 {
+            return AppColors.joshMatt
+        }
+        if store.round.matchDelta < 0 {
+            return AppColors.jeffShane
+        }
+        return AppColors.push
     }
 
     private func saveCurrentRound() {

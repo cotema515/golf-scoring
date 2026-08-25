@@ -63,6 +63,13 @@ struct ProfileMenuButton: View {
             if let handicapIndex = account.profile.handicapIndex {
                 Text("Index \(handicapIndex, format: .number.precision(.fractionLength(1)))")
             }
+            if account.profile.isCoteCupProfile {
+                Button {
+                    account.returnToGameModeChoice()
+                } label: {
+                    Label("Switch Game", systemImage: "square.grid.2x2")
+                }
+            }
             Button("Sign Out", action: account.signOut)
         } label: {
             ProfileAvatar(imageData: account.profile.profileImageData, size: 30)
@@ -75,9 +82,11 @@ struct DateSelectionButton: View {
     let title: String
     @Binding var date: Date
     @State private var isShowingPicker = false
+    @State private var pendingDate = Date()
 
     var body: some View {
         Button {
+            pendingDate = date
             isShowingPicker = true
         } label: {
             HStack {
@@ -92,14 +101,22 @@ struct DateSelectionButton: View {
         }
         .sheet(isPresented: $isShowingPicker) {
             NavigationStack {
-                DatePicker(title, selection: $date, displayedComponents: .date)
+                DatePicker(title, selection: $pendingDate, displayedComponents: .date)
                     .datePickerStyle(.graphical)
                     .padding()
                     .navigationTitle(title)
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") {
+                                pendingDate = date
+                                isShowingPicker = false
+                            }
+                        }
+
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Done") {
+                                date = Calendar.current.startOfDay(for: pendingDate)
                                 isShowingPicker = false
                             }
                         }

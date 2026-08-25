@@ -81,7 +81,7 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             ],
             holes: makeHoles(
                 pars: [4, 5, 4, 4, 3, 4, 5, 3, 4, 4, 5, 4, 4, 3, 4, 5, 3, 4],
-                strokeIndexes: [15, 3, 9, 1, 11, 13, 7, 17, 5, 18, 10, 8, 12, 14, 16, 4, 6, 2]
+                strokeIndexes: [15, 3, 9, 1, 11, 13, 7, 17, 5, 16, 8, 10, 2, 14, 18, 4, 12, 6]
             )
         ),
         CourseCatalogEntry(
@@ -125,7 +125,7 @@ struct CourseCatalogEntry: Identifiable, Hashable {
             ],
             holes: makeHoles(
                 pars: [4, 3, 5, 4, 4, 3, 4, 4, 5, 4, 5, 3, 4, 3, 5, 4, 4, 4],
-                strokeIndexes: [13, 17, 5, 1, 7, 15, 9, 11, 3, 2, 10, 16, 8, 18, 4, 14, 12, 6]
+                strokeIndexes: [13, 11, 17, 1, 5, 9, 7, 15, 3, 4, 18, 8, 10, 16, 14, 6, 12, 2]
             )
         )
     ]

@@ -1,6 +1,23 @@
 import Foundation
 
 enum ScoringEngine {
+    static func familyTeam(for playerName: String) -> Int? {
+        let firstName = playerName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: " ")
+            .first?
+            .lowercased()
+
+        switch firstName {
+        case "josh", "matt":
+            return 1
+        case "jeff", "shane", "dad":
+            return 2
+        default:
+            return nil
+        }
+    }
+
     static func courseHandicap(handicapIndex: Double, course: CourseSetup) -> Int {
         Int((handicapIndex * (Double(course.slope) / 113.0) + (course.rating - Double(course.par))).rounded())
     }

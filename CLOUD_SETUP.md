@@ -31,13 +31,13 @@ The anon key is okay to ship in the app for this private TestFlight setup.
 
 Run the app once after the keys are pasted. The app will:
 
-- keep saving locally on the phone
-- push the shared trip/round data to Supabase
-- refresh from Supabase every 20 seconds
-- let anyone tap Refresh or Back Up Now on Home
+- use Supabase as the source of truth for trips, rounds, scores, players, handicaps, and profile-photo metadata
+- keep only the current in-memory trip/round state while the app is open
+- refresh from Supabase automatically
+- let anyone tap Refresh on Home if they want to force a cloud read
 
 ## Friday behavior
 
 Each person picks their golfer box on first launch. Everyone sees the same shared trips and scorecards after cloud sync is configured.
 
-For this private version, concurrent edits are last-write-wins. That is acceptable for the weekend if one person is mainly entering scores. For the public/real app, replace this with authenticated users and per-hole score writes.
+For this private version, concurrent edits are still mostly last-write-wins. Completed-round inline score edits are smaller per-hole mutations, while in-progress/final round submission still sends one complete round. For the public/real app, replace this with authenticated users and per-score conflict handling.

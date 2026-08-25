@@ -2,15 +2,21 @@ import Foundation
 
 @MainActor
 final class MatchStore: ObservableObject {
-    @Published var round = MatchRound.sample
+    @Published var round = MatchRound.empty
 
     func resetRound() {
-        round = MatchRound.sample
+        round = MatchRound.empty
     }
 
     func loadRound(_ summary: RoundSummary) {
         let course = summary.course ?? inferredCourse(for: summary)
-        let golfers = summary.golfers ?? inferredGolfers(for: summary)
+        let golfers = (summary.golfers ?? inferredGolfers(for: summary)).map { golfer in
+            var normalizedGolfer = golfer
+            if let familyTeam = ScoringEngine.familyTeam(for: golfer.name) {
+                normalizedGolfer.team = familyTeam
+            }
+            return normalizedGolfer
+        }
         var scores: [UUID: [Int: HoleScore]] = [:]
 
         for golfer in golfers {
@@ -29,7 +35,10 @@ final class MatchStore: ObservableObject {
             date: summary.date,
             course: course,
             golfers: golfers,
-            holes: summary.holes.map { Hole(number: $0.number, par: $0.par, strokeIndex: $0.strokeIndex) },
+            holes: CourseCatalogLookup.canonicalHoles(
+                for: course.name.isEmpty ? summary.courseName : course.name,
+                fallback: summary.holes.map { Hole(number: $0.number, par: $0.par, strokeIndex: $0.strokeIndex) }
+            ),
             scores: scores
         )
     }
@@ -41,12 +50,7 @@ final class MatchStore: ObservableObject {
     }
 
     private func inferredCourse(for summary: RoundSummary) -> CourseSetup {
-        if let catalogCourse = CourseCatalogEntry.courses.first(where: { $0.name == summary.courseName }) {
-            return catalogCourse.setup(for: catalogCourse.defaultTee)
-        }
-
-        if summary.courseName.hasPrefix("Pacific Dunes"),
-           let catalogCourse = CourseCatalogEntry.courses.first(where: { $0.name == "Pacific Dunes" }) {
+        if let catalogCourse = CourseCatalogLookup.course(for: summary.courseName) {
             return catalogCourse.setup(for: catalogCourse.defaultTee)
         }
 
@@ -56,7 +60,7 @@ final class MatchStore: ObservableObject {
 
     private func inferredGolfers(for summary: RoundSummary) -> [Golfer] {
         summary.players.enumerated().map { index, player in
-            let team = ["Josh", "Matt"].contains(player.name) ? 1 : (["Shane", "Jeff"].contains(player.name) ? 2 : (index < 2 ? 1 : 2))
+            let team = ScoringEngine.familyTeam(for: player.name) ?? (index < 2 ? 1 : 2)
             return Golfer(
                 name: player.name,
                 handicapIndex: 0,

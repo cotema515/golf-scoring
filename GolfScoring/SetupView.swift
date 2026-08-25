@@ -8,13 +8,13 @@ struct SetupView: View {
     let cancel: () -> Void
     @State private var handicapIndexInputs: [UUID: String] = [:]
     @State private var showHandicapError = false
-    @State private var selectedCourseID = CourseCatalogEntry.courses.first?.id ?? ""
-    @State private var selectedTeeName = CourseCatalogEntry.courses.first?.defaultTee.name ?? ""
+    @State private var selectedCourseID = ""
+    @State private var selectedTeeName = ""
     @State private var roundDate = Date()
     @State private var courseSearchText = ""
     @State private var selectedCourseRegion = "All"
+    @State private var isShowingCoursePicker = false
     @FocusState private var focusedHandicapGolferID: UUID?
-    @FocusState private var isCourseSearchFocused: Bool
 
     private let courseCatalog = CourseCatalogEntry.courses
 
@@ -51,94 +51,79 @@ struct SetupView: View {
                 .listRowBackground(Color.clear)
             }
 
-            Section {
-                TextField("Search courses", text: $courseSearchText)
-                    .textInputAutocapitalization(.words)
-                    .submitLabel(.done)
-                    .focused($isCourseSearchFocused)
-                    .onSubmit {
-                        isCourseSearchFocused = false
-                    }
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(courseRegions, id: \.self) { region in
-                            Button {
-                                selectedCourseRegion = region
-                            } label: {
-                                Text(region)
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .background(
-                                        selectedCourseRegion == region ? Color.green.opacity(0.2) : Color.secondary.opacity(0.12),
-                                        in: Capsule()
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+            if !isEditingExistingRound {
+                Section {
+                    if let selectedCourse {
+                    SelectedCourseSummaryCard(course: selectedCourse, teeName: selectedTeeName)
+                    } else {
+                        NoCourseSelectedCard()
                 }
 
-                if filteredCourses.isEmpty {
-                    ContentUnavailableView(
-                        "No matching courses",
-                        systemImage: "magnifyingglass",
-                        description: Text("Try a different search or region.")
-                    )
-                } else {
-                    VStack(spacing: 10) {
-                        ForEach(filteredCourses) { course in
-                            CourseSelectionCard(
-                                course: course,
-                                isSelected: selectedCourseID == course.id
-                            ) {
-                                selectCourse(course)
+                    Button {
+                        isShowingCoursePicker = true
+                    } label: {
+                        Label(selectedCourse == nil ? "Choose Course" : "Change Course", systemImage: "magnifyingglass")
+                    }
+
+                    if let selectedCourse {
+                        Picker("Tee", selection: $selectedTeeName) {
+                            ForEach(selectedCourse.tees) { tee in
+                                Text(tee.setupName).tag(tee.name)
                             }
                         }
                     }
-                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
-                }
 
-                if let selectedCourse {
-                    Picker("Tee", selection: $selectedTeeName) {
-                        ForEach(selectedCourse.tees) { tee in
-                            Text(tee.setupName).tag(tee.name)
-                        }
+                    HStack {
+                        Text("Location")
+                        Spacer()
+                        Text(selectedCourse?.location ?? "—")
+                            .foregroundStyle(.secondary)
                     }
-                }
 
-                HStack {
-                    Text("Location")
-                    Spacer()
-                    Text(selectedCourse?.location ?? "Kiawah Island, SC")
-                        .foregroundStyle(.secondary)
-                }
+                    HStack {
+                        Text("Tee")
+                        Spacer()
+                        Text(store.round.course.tee.isEmpty ? "—" : store.round.course.tee)
+                            .foregroundStyle(.secondary)
+                    }
 
-                HStack {
-                    Text("Tee")
-                    Spacer()
-                    Text(store.round.course.tee)
-                        .foregroundStyle(.secondary)
-                }
+                    HStack {
+                        Text("Par")
+                        Spacer()
+                        Text(store.round.course.name.isEmpty ? "—" : "\(store.round.course.par)")
+                            .foregroundStyle(.secondary)
+                    }
 
-                HStack {
-                    Text("Par")
-                    Spacer()
-                    Text("\(store.round.course.par)")
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Text("Distance")
+                        Spacer()
+                        Text(store.round.course.yardage > 0 ? "\(store.round.course.yardage) yards" : "—")
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Course")
+                } footer: {
+                    Text("Choose the course first. The catalog fills in par, hole handicaps, tee distance, rating, and slope.")
                 }
-
-                HStack {
-                    Text("Distance")
-                    Spacer()
-                    Text(store.round.course.yardage > 0 ? "\(store.round.course.yardage) yards" : "—")
-                        .foregroundStyle(.secondary)
+            } else {
+                Section {
+                    HStack {
+                        Text("Course")
+                        Spacer()
+                        Text(store.round.course.name)
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Tee")
+                        Spacer()
+                        Text(store.round.course.tee)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Round")
+                } footer: {
+                    Text("For finished rounds, edit the date and handicaps here. Tap a hole in the round detail to edit scores.")
                 }
-            } header: {
-                Text("Course")
-            } footer: {
-                Text("Course catalog fills in par, hole handicaps, tee distance, rating, and slope for the handicap math.")
             }
 
             Section {
@@ -206,7 +191,7 @@ struct SetupView: View {
             }
 
             Section {
-                Button(isEditingExistingRound ? "Continue to Scores" : "Start Match", action: startIfReady)
+                Button(isEditingExistingRound ? "Save Round Details" : "Start Match", action: startIfReady)
                     .frame(maxWidth: .infinity)
                     .fontWeight(.semibold)
                     .disabled(!allSetupEntered)
@@ -230,9 +215,18 @@ struct SetupView: View {
                 Spacer()
                 Button("Done") {
                     focusedHandicapGolferID = nil
-                    isCourseSearchFocused = false
                 }
             }
+        }
+        .sheet(isPresented: $isShowingCoursePicker) {
+            CoursePickerSheet(
+                courses: courseCatalog,
+                courseRegions: courseRegions,
+                selectedCourseID: $selectedCourseID,
+                selectedTeeName: $selectedTeeName,
+                searchText: $courseSearchText,
+                selectedRegion: $selectedCourseRegion
+            )
         }
         .alert("Setup required", isPresented: $showHandicapError) {
             Button("OK", role: .cancel) {}
@@ -246,18 +240,19 @@ struct SetupView: View {
                     (golfer.id, String(format: "%.1f", golfer.handicapIndex))
                 })
             }
-            if !isEditingExistingRound {
-                applySelectedCourse()
-            }
             prefillCurrentPlayer()
             roundDate = store.round.date
         }
         .onChange(of: selectedCourseID) { _, _ in
             selectedTeeName = selectedCourse?.defaultTee.name ?? ""
-            applySelectedCourse()
+            if selectedCourse != nil {
+                applySelectedCourse()
+            }
         }
         .onChange(of: selectedTeeName) { _, _ in
-            applySelectedCourse()
+            if selectedCourse != nil {
+                applySelectedCourse()
+            }
         }
         .onChange(of: focusedHandicapGolferID) { _, newValue in
             if let newValue {
@@ -274,26 +269,14 @@ struct SetupView: View {
         ["All"] + Array(Set(courseCatalog.map(\.courseRegion))).sorted()
     }
 
-    private var filteredCourses: [CourseCatalogEntry] {
-        let cleanSearch = courseSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        return courseCatalog.filter { course in
-            let matchesRegion = selectedCourseRegion == "All" || course.courseRegion == selectedCourseRegion
-            let matchesSearch = cleanSearch.isEmpty ||
-                course.name.localizedCaseInsensitiveContains(cleanSearch) ||
-                course.location.localizedCaseInsensitiveContains(cleanSearch)
-
-            return matchesRegion && matchesSearch
-        }
-    }
-
-    private func selectCourse(_ course: CourseCatalogEntry) {
-        selectedCourseID = course.id
-        selectedTeeName = course.defaultTee.name
-        applySelectedCourse()
-    }
-
     private func syncSelectionsFromRound() {
+        let savedCourseName = store.round.course.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !savedCourseName.isEmpty else {
+            selectedCourseID = ""
+            selectedTeeName = ""
+            return
+        }
+
         if let matchingCourse = courseCatalog.first(where: { courseMatches($0, roundCourseName: store.round.course.name) }) {
             selectedCourseID = matchingCourse.id
             if matchingCourse.tees.contains(where: { $0.name == store.round.course.tee }) {
@@ -309,6 +292,7 @@ struct SetupView: View {
     private func courseMatches(_ course: CourseCatalogEntry, roundCourseName: String) -> Bool {
         let catalogName = normalizedCourseName(course.name)
         let savedName = normalizedCourseName(roundCourseName)
+        guard !savedName.isEmpty else { return false }
 
         return catalogName == savedName ||
             savedName.hasPrefix(catalogName) ||
@@ -388,6 +372,9 @@ struct SetupView: View {
             let handicapIndex = Double(handicapIndexInputs[id] ?? "") ?? 0
             store.round.golfers[index].handicapIndex = handicapIndex
             store.round.golfers[index].courseHandicap = store.round.calculatedCourseHandicap(for: handicapIndex)
+            if let familyTeam = ScoringEngine.familyTeam(for: store.round.golfers[index].name) {
+                store.round.golfers[index].team = familyTeam
+            }
             account.updateHandicapIndex(for: store.round.golfers[index].name, to: handicapIndex)
         }
         store.round.date = roundDate
@@ -478,6 +465,192 @@ struct CourseSelectionCard: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct SelectedCourseSummaryCard: View {
+    let course: CourseCatalogEntry
+    let teeName: String
+
+    private var selectedTee: CourseTee {
+        course.tee(named: teeName)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "flag.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.green)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(course.name)
+                        .font(.headline)
+
+                    Text(course.location)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+            }
+
+            HStack(spacing: 10) {
+                CourseSetupPill(title: "Tee", value: selectedTee.name)
+                CourseSetupPill(title: "Yards", value: selectedTee.yardage > 0 ? "\(selectedTee.yardage)" : "—")
+                CourseSetupPill(title: "Rating/Slope", value: "\(selectedTee.rating.formatted(.number.precision(.fractionLength(1)))) / \(selectedTee.slope)")
+            }
+        }
+        .padding(12)
+        .background(Color.green.opacity(0.11), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.green.opacity(0.28), lineWidth: 1)
+        )
+        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+    }
+}
+
+struct NoCourseSelectedCard: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "flag.badge.plus")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Choose a course")
+                    .font(.headline)
+                Text("Pick the course before setting tees and handicaps.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(12)
+        .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+    }
+}
+
+struct CourseSetupPill: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title.uppercased())
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+struct CoursePickerSheet: View {
+    let courses: [CourseCatalogEntry]
+    let courseRegions: [String]
+    @Binding var selectedCourseID: String
+    @Binding var selectedTeeName: String
+    @Binding var searchText: String
+    @Binding var selectedRegion: String
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var isSearchFocused: Bool
+
+    private var filteredCourses: [CourseCatalogEntry] {
+        let cleanSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return courses.filter { course in
+            let matchesRegion = selectedRegion == "All" || course.courseRegion == selectedRegion
+            let matchesSearch = cleanSearch.isEmpty ||
+                course.name.localizedCaseInsensitiveContains(cleanSearch) ||
+                course.location.localizedCaseInsensitiveContains(cleanSearch)
+
+            return matchesRegion && matchesSearch
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    TextField("Search course or location", text: $searchText)
+                        .textInputAutocapitalization(.words)
+                        .submitLabel(.done)
+                        .focused($isSearchFocused)
+                        .onSubmit {
+                            isSearchFocused = false
+                        }
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(courseRegions, id: \.self) { region in
+                                Button {
+                                    selectedRegion = region
+                                } label: {
+                                    Text(region)
+                                        .font(.caption.weight(.semibold))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(
+                                            selectedRegion == region ? Color.green.opacity(0.2) : Color.secondary.opacity(0.12),
+                                            in: Capsule()
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+
+                Section {
+                    if filteredCourses.isEmpty {
+                        ContentUnavailableView(
+                            "No matching courses",
+                            systemImage: "magnifyingglass",
+                            description: Text("Try a different search or region.")
+                        )
+                    } else {
+                        ForEach(filteredCourses) { course in
+                            CourseSelectionCard(
+                                course: course,
+                                isSelected: selectedCourseID == course.id
+                            ) {
+                                selectedCourseID = course.id
+                                selectedTeeName = course.defaultTee.name
+                                isSearchFocused = false
+                                dismiss()
+                            }
+                            .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Choose Course")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isSearchFocused = false
+                    }
+                }
+            }
+        }
     }
 }
 

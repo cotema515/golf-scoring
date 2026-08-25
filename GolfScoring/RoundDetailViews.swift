@@ -6,7 +6,7 @@ struct RoundSummaryCard: View {
     var playerImageData: (String) -> Data? = { _ in nil }
 
     private var displayedHoles: [HoleSummary] {
-        holesOverride ?? round.holes
+        holesOverride ?? CourseCatalogLookup.canonicalHoleSummaries(for: round)
     }
 
     private var displayedPlayers: [PlayerRoundSummary] {
@@ -15,9 +15,10 @@ struct RoundSummaryCard: View {
     }
 
     private var displayedTeamResult: String {
-        guard let holesOverride else { return round.teamResult }
-        return PreviousRoundCalculator.resultText(
-            for: PreviousRoundCalculator.delta(for: holesOverride, round: round),
+        guard let holesOverride else { return round.resolvedTeamResult }
+        return PreviousRoundCalculator.matchResultText(
+            for: holesOverride,
+            round: round,
             teamOneName: round.teamName(1),
             teamTwoName: round.teamName(2)
         )
@@ -42,7 +43,7 @@ struct RoundSummaryCard: View {
                 Spacer()
                 Text(displayedTeamResult)
                     .font(.subheadline.bold())
-                    .foregroundStyle(.green)
+                    .foregroundStyle(AppColors.resultColor(displayedTeamResult, teamOneName: round.teamName(1), teamTwoName: round.teamName(2)))
             }
 
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
@@ -141,16 +142,44 @@ enum PreviousRoundCalculator {
     }
 
     static func delta(for holes: [HoleSummary], teamOneNames: [String], teamTwoNames: [String]) -> Int {
-        holes.reduce(0) { total, hole in
+        matchState(for: holes, teamOneNames: teamOneNames, teamTwoNames: teamTwoNames).delta
+    }
+
+    static func matchResultText(for holes: [HoleSummary], round: RoundSummary, teamOneName: String, teamTwoName: String) -> String {
+        let state = matchState(
+            for: holes,
+            teamOneNames: teamPlayerNames(for: 1, round: round),
+            teamTwoNames: teamPlayerNames(for: 2, round: round)
+        )
+        return resultText(for: state.delta, closedAtHole: state.closedAtHole, holesRemaining: state.holesRemaining, teamOneName: teamOneName, teamTwoName: teamTwoName)
+    }
+
+    private static func matchState(for holes: [HoleSummary], teamOneNames: [String], teamTwoNames: [String], through holeNumber: Int? = nil) -> (delta: Int, closedAtHole: Int?, holesRemaining: Int) {
+        let sortedHoles = holes.sorted { $0.number < $1.number }
+        let totalHoles = sortedHoles.count
+        var delta = 0
+        var playedCount = 0
+
+        for (index, hole) in sortedHoles.enumerated() {
+            if let holeNumber, hole.number > holeNumber { break }
+            playedCount += 1
+
             switch winner(for: hole, teamOneNames: teamOneNames, teamTwoNames: teamTwoNames) {
             case 1:
-                return total + 1
+                delta += 1
             case 2:
-                return total - 1
+                delta -= 1
             default:
-                return total
+                break
+            }
+
+            let holesRemaining = max(0, totalHoles - index - 1)
+            if holesRemaining > 0, abs(delta) > holesRemaining {
+                return (delta, hole.number, holesRemaining)
             }
         }
+
+        return (delta, nil, max(0, totalHoles - playedCount))
     }
 
     static func resultText(for delta: Int) -> String {
@@ -158,8 +187,16 @@ enum PreviousRoundCalculator {
     }
 
     static func resultText(for delta: Int, teamOneName: String, teamTwoName: String) -> String {
+        resultText(for: delta, closedAtHole: nil, holesRemaining: nil, teamOneName: teamOneName, teamTwoName: teamTwoName)
+    }
+
+    static func resultText(for delta: Int, closedAtHole: Int?, holesRemaining: Int?, teamOneName: String, teamTwoName: String) -> String {
         if delta == 0 { return "Tie" }
-        return delta > 0 ? "\(teamOneName) Up \(delta)" : "\(teamTwoName) Up \(abs(delta))"
+        let winner = delta > 0 ? teamOneName : teamTwoName
+        if closedAtHole != nil, let holesRemaining {
+            return "\(winner) \(abs(delta)) & \(holesRemaining)"
+        }
+        return "\(winner) Up \(abs(delta))"
     }
 
     static func teamPlayerNames(for team: Int, round: RoundSummary) -> [String] {
@@ -185,21 +222,61 @@ enum PreviousRoundCalculator {
     }
 
     static func recalculate(_ holes: inout [HoleSummary]) {
+        recalculate(
+            &holes,
+            teamOneNames: joshMattNames,
+            teamTwoNames: shaneJeffNames,
+            teamOneName: "Josh & Matt",
+            teamTwoName: "Shane & Jeff"
+        )
+    }
+
+    static func recalculate(_ holes: inout [HoleSummary], round: RoundSummary) {
+        recalculate(
+            &holes,
+            teamOneNames: teamPlayerNames(for: 1, round: round),
+            teamTwoNames: teamPlayerNames(for: 2, round: round),
+            teamOneName: round.teamName(1),
+            teamTwoName: round.teamName(2)
+        )
+    }
+
+    private static func recalculate(
+        _ holes: inout [HoleSummary],
+        teamOneNames: [String],
+        teamTwoNames: [String],
+        teamOneName: String,
+        teamTwoName: String
+    ) {
         var runningDelta = 0
 
         for index in holes.indices {
-            let winner = winner(for: holes[index])
+            let winner = winner(for: holes[index], teamOneNames: teamOneNames, teamTwoNames: teamTwoNames)
             switch winner {
-            case "JM":
+            case 1:
                 runningDelta += 1
-                holes[index].result = "JM Win"
-            case "SJ":
+                holes[index].result = "\(teamOneName) Win"
+            case 2:
                 runningDelta -= 1
-                holes[index].result = "SJ Win"
+                holes[index].result = "\(teamTwoName) Win"
             default:
                 holes[index].result = "Tie"
             }
-            holes[index].runningTotal = resultText(for: runningDelta)
+            let holesRemaining = max(0, holes.count - index - 1)
+            let closed = holesRemaining > 0 && abs(runningDelta) > holesRemaining
+            holes[index].runningTotal = resultText(
+                for: runningDelta,
+                closedAtHole: closed ? holes[index].number : nil,
+                holesRemaining: holesRemaining,
+                teamOneName: teamOneName,
+                teamTwoName: teamTwoName
+            )
+            if closed {
+                for laterIndex in holes.indices where laterIndex > index {
+                    holes[laterIndex].runningTotal = holes[index].runningTotal
+                }
+                break
+            }
         }
     }
 
@@ -252,6 +329,7 @@ struct RoundDetailView: View {
     let editScores: () -> Void
     let editSetup: () -> Void
     let deleteRound: () -> Void
+    let saveCompletedHoleEdit: (RoundSummary, Int) -> Void
     var playerImageData: (String) -> Data? = { _ in nil }
     @State private var showFirstDeleteConfirmation = false
     @State private var showFinalDeleteConfirmation = false
@@ -263,6 +341,7 @@ struct RoundDetailView: View {
         editScores: @escaping () -> Void,
         editSetup: @escaping () -> Void,
         deleteRound: @escaping () -> Void,
+        saveCompletedHoleEdit: @escaping (RoundSummary, Int) -> Void = { _, _ in },
         playerImageData: @escaping (String) -> Data? = { _ in nil }
     ) {
         _round = round
@@ -270,6 +349,7 @@ struct RoundDetailView: View {
         self.editScores = editScores
         self.editSetup = editSetup
         self.deleteRound = deleteRound
+        self.saveCompletedHoleEdit = saveCompletedHoleEdit
         self.playerImageData = playerImageData
     }
 
@@ -283,15 +363,8 @@ struct RoundDetailView: View {
                 RoundSummaryCard(round: round, playerImageData: playerImageData)
                 PreviousRoundBreakdownCard(round: round)
 
-                Button(action: editScores) {
-                    Label(round.isComplete ? "Edit Scores" : "Continue / Edit Scores", systemImage: "pencil")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-
                 Button(action: editSetup) {
-                    Label("Edit Course / Handicaps", systemImage: "slider.horizontal.3")
+                    Label("Edit Date / Handicaps", systemImage: "slider.horizontal.3")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -310,7 +383,9 @@ struct RoundDetailView: View {
                     Text("Hole-by-Hole")
                         .font(.headline)
 
-                    RoundHoleMatrixView(round: round)
+                    RoundHoleMatrixView(round: round) { holeNumber, grossScores in
+                        applyInlineHoleScores(holeNumber: holeNumber, grossScores: grossScores)
+                    }
                 }
             }
             .padding()
@@ -343,6 +418,65 @@ struct RoundDetailView: View {
         } message: {
             Text("This cannot be undone. Type DELETE exactly to remove this round.")
         }
+    }
+
+    private func applyInlineHoleScores(holeNumber: Int, grossScores: [String: Int]) {
+        let canonicalHoles = CourseCatalogLookup.canonicalHoles(
+            for: round.course?.name ?? round.courseName,
+            fallback: round.holes.map { Hole(number: $0.number, par: $0.par, strokeIndex: $0.strokeIndex) }
+        )
+        let canonicalHole = canonicalHoles.first { $0.number == holeNumber }
+        let golfers = round.golfers ?? round.players.enumerated().map { index, player in
+            Golfer(
+                name: player.name,
+                handicapIndex: 0,
+                courseHandicap: player.strokes,
+                team: ScoringEngine.familyTeam(for: player.name) ?? (index < 2 ? 1 : 2)
+            )
+        }
+
+        for index in round.holes.indices {
+            if let catalogHole = canonicalHoles.first(where: { $0.number == round.holes[index].number }) {
+                round.holes[index].par = catalogHole.par
+                round.holes[index].strokeIndex = catalogHole.strokeIndex
+            }
+        }
+
+        guard let holeIndex = round.holes.firstIndex(where: { $0.number == holeNumber }) else { return }
+        if let canonicalHole {
+            round.holes[holeIndex].par = canonicalHole.par
+            round.holes[holeIndex].strokeIndex = canonicalHole.strokeIndex
+        }
+
+        for playerIndex in round.holes[holeIndex].players.indices {
+            let playerName = round.holes[holeIndex].players[playerIndex].name
+            guard let gross = grossScores[playerName] else { continue }
+            let golfer = golfers.first {
+                $0.name.localizedCaseInsensitiveCompare(playerName) == .orderedSame
+            } ?? Golfer(name: playerName, handicapIndex: 0, courseHandicap: 0, team: ScoringEngine.familyTeam(for: playerName) ?? 1)
+            let hole = Hole(
+                number: round.holes[holeIndex].number,
+                par: round.holes[holeIndex].par,
+                strokeIndex: round.holes[holeIndex].strokeIndex
+            )
+            let strokes = ScoringEngine.strokes(for: golfer, on: hole, among: golfers)
+            round.holes[holeIndex].players[playerIndex].gross = gross
+            round.holes[holeIndex].players[playerIndex].net = gross - strokes
+        }
+
+        var recalculatedHoles = round.holes
+        PreviousRoundCalculator.recalculate(&recalculatedHoles, round: round)
+        round.holes = recalculatedHoles
+
+        let completedHoles = round.holes.filter { round.isHoleComplete($0.number) }
+        round.players = PreviousRoundCalculator.playerTotals(from: completedHoles)
+        round.teamResult = PreviousRoundCalculator.matchResultText(
+            for: completedHoles,
+            round: round,
+            teamOneName: round.teamName(1),
+            teamTwoName: round.teamName(2)
+        )
+        saveCompletedHoleEdit(round, holeNumber)
     }
 }
 
@@ -479,9 +613,13 @@ struct PreviousRoundBreakdownCard: View {
 
 struct RoundHoleMatrixView: View {
     let round: RoundSummary
+    var saveHoleScores: (Int, [String: Int]) -> Void = { _, _ in }
+    @State private var editingHoleNumber: Int?
+    @State private var scoreInputs: [String: String] = [:]
+    @FocusState private var focusedPlayerName: String?
 
     private var holes: [HoleSummary] {
-        round.holes
+        CourseCatalogLookup.canonicalHoleSummaries(for: round)
     }
 
     private var playerNames: [String] {
@@ -556,6 +694,14 @@ struct RoundHoleMatrixView: View {
                             .frame(maxWidth: .infinity)
                     }
                 }
+
+                Image(systemName: editingHoleNumber == hole.number ? "chevron.up.circle.fill" : "pencil.circle")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                toggleEditing(hole)
             }
 
             HStack(spacing: 8) {
@@ -573,9 +719,177 @@ struct RoundHoleMatrixView: View {
                 Spacer()
             }
             .padding(.leading, 54)
+
+            if editingHoleNumber == hole.number {
+                inlineEditor(for: hole)
+                    .padding(.top, 4)
+            }
         }
         .padding(10)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .background(editingHoleNumber == hole.number ? Color.green.opacity(0.10) : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(editingHoleNumber == hole.number ? Color.green.opacity(0.35) : Color.clear, lineWidth: 1)
+        }
+    }
+
+    private func inlineEditor(for hole: HoleSummary) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+
+            HStack {
+                Label("Edit gross scores", systemImage: "pencil")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button("Cancel") {
+                    editingHoleNumber = nil
+                    focusedPlayerName = nil
+                    scoreInputs = [:]
+                }
+                .font(.caption)
+
+                Button("Done") {
+                    saveInlineScores(for: hole)
+                }
+                .font(.caption.bold())
+                .disabled(!canSaveInlineScores(for: hole))
+            }
+
+            HStack(spacing: 8) {
+                ForEach(playerNames, id: \.self) { name in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(shortName(name))
+                            .font(.caption2.bold())
+                            .foregroundStyle(.secondary)
+
+                        TextField("—", text: inlineScoreBinding(for: name))
+                            .keyboardType(.numberPad)
+                            .focused($focusedPlayerName, equals: name)
+                            .multilineTextAlignment(.center)
+                            .font(.title3.monospacedDigit().bold())
+                            .padding(.vertical, 8)
+                            .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 10))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+
+            Text("Saving updates net scores, Stableford, the hole winner, and all totals.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Button("Previous") {
+                    moveFocus(by: -1)
+                }
+                .disabled(focusedPlayerName == nil)
+
+                Button("Next") {
+                    moveFocus(by: 1)
+                }
+                .disabled(focusedPlayerName == nil)
+
+                Spacer()
+
+                Button("Done") {
+                    finishInlineEditing()
+                }
+            }
+        }
+    }
+
+    private func toggleEditing(_ hole: HoleSummary) {
+        if editingHoleNumber == hole.number {
+            editingHoleNumber = nil
+            focusedPlayerName = nil
+            scoreInputs = [:]
+            return
+        }
+
+        editingHoleNumber = hole.number
+        scoreInputs = Dictionary(uniqueKeysWithValues: playerNames.map { name in
+            let gross = hole.players.first { $0.name == name }?.gross
+            return (name, gross.map(String.init) ?? "")
+        })
+        focusedPlayerName = nil
+    }
+
+    private func saveInlineScores(for hole: HoleSummary) {
+        let scores = Dictionary(uniqueKeysWithValues: playerNames.compactMap { name -> (String, Int)? in
+            guard let score = Int(scoreInputs[name, default: ""]) else { return nil }
+            return (name, score)
+        })
+        saveHoleScores(hole.number, scores)
+        editingHoleNumber = nil
+        focusedPlayerName = nil
+        scoreInputs = [:]
+    }
+
+    private func finishInlineEditing() {
+        guard
+            let editingHoleNumber,
+            let hole = holes.first(where: { $0.number == editingHoleNumber })
+        else {
+            focusedPlayerName = nil
+            return
+        }
+
+        if canSaveInlineScores(for: hole) {
+            saveInlineScores(for: hole)
+        } else {
+            focusedPlayerName = nil
+        }
+    }
+
+    private func canSaveInlineScores(for hole: HoleSummary) -> Bool {
+        playerNames.allSatisfy { name in
+            guard let score = Int(scoreInputs[name, default: ""]) else { return false }
+            return (1...15).contains(score)
+        }
+    }
+
+    private func inlineScoreBinding(for playerName: String) -> Binding<String> {
+        Binding(
+            get: { scoreInputs[playerName, default: ""] },
+            set: { newValue in
+                let sanitized = sanitizedScoreText(from: newValue)
+                scoreInputs[playerName] = sanitized
+            }
+        )
+    }
+
+    private func sanitizedScoreText(from input: String) -> String {
+        let digitsOnly = input.filter(\.isNumber)
+        guard let firstDigit = digitsOnly.first else { return "" }
+        if firstDigit == "1", digitsOnly.dropFirst().first == "0" {
+            return "10"
+        }
+        return String(firstDigit)
+    }
+
+    private func moveFocus(by offset: Int) {
+        guard
+            let focusedPlayerName,
+            let currentIndex = playerNames.firstIndex(of: focusedPlayerName)
+        else {
+            self.focusedPlayerName = playerNames.first
+            return
+        }
+
+        let nextIndex = currentIndex + offset
+        if playerNames.indices.contains(nextIndex) {
+            self.focusedPlayerName = playerNames[nextIndex]
+        } else {
+            self.focusedPlayerName = nil
+        }
     }
 
     private func playerScoreCell(player: PlayerHoleSummary, par: Int) -> some View {
@@ -644,13 +958,7 @@ struct RoundHoleMatrixView: View {
     }
 
     private func resultColor(_ result: String) -> Color {
-        if result.contains("JM") || result.localizedCaseInsensitiveContains(round.teamName(1)) {
-            return .green
-        }
-        if result.contains("SJ") || result.localizedCaseInsensitiveContains(round.teamName(2)) {
-            return .blue
-        }
-        return .gray
+        AppColors.resultColor(result, teamOneName: round.teamName(1), teamTwoName: round.teamName(2))
     }
 }
 

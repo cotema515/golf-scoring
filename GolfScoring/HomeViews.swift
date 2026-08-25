@@ -6,7 +6,6 @@ struct HomeView: View {
     @ObservedObject var cloudSync: CloudSyncStore
     let trips: [GolfTrip]
     let refreshCloud: () -> Void
-    let backupCloud: () -> Void
     let startSingleRound: () -> Void
     let startTrip: () -> Void
     let openTrip: (GolfTrip) -> Void
@@ -73,7 +72,7 @@ struct HomeView: View {
                     }
                 }
 
-                CloudStatusCard(sync: cloudSync, refresh: refreshCloud, backup: backupCloud)
+                CloudStatusCard(sync: cloudSync, refresh: refreshCloud)
             }
             .padding()
         }
@@ -148,7 +147,6 @@ struct HomeView: View {
 struct CloudStatusCard: View {
     @ObservedObject var sync: CloudSyncStore
     let refresh: () -> Void
-    let backup: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -167,11 +165,6 @@ struct CloudStatusCard: View {
             Menu {
                 Button("Refresh Now") {
                     refresh()
-                }
-                .disabled(!sync.isConfigured)
-
-                Button("Back Up Now") {
-                    backup()
                 }
                 .disabled(!sync.isConfigured)
             } label: {
@@ -236,7 +229,7 @@ struct TripCard: View {
                 Spacer()
                 Text(trip.leaderText)
                     .font(.headline)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(trip.leaderColor)
             }
 
             HStack(spacing: 10) {
@@ -301,7 +294,7 @@ struct OverallGamesCard: View {
                 Spacer()
                 Text(leaderText)
                     .font(.headline)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(delta > 0 ? AppColors.joshMatt : delta < 0 ? AppColors.jeffShane : AppColors.push)
             }
 
             HStack(spacing: 10) {
@@ -318,72 +311,96 @@ struct OverallGamesCard: View {
 struct PlayerAveragesCard: View {
     let trips: [GolfTrip]
 
-    private var playerStats: [PlayerAverageStat] {
-        let players = trips
-            .flatMap(\.rounds)
-            .flatMap(\.players)
-        let grouped = Dictionary(grouping: players, by: \.name)
-
-        return grouped.map { name, scores in
-            let grossAverage = Double(scores.map(\.gross).reduce(0, +)) / Double(scores.count)
-            let netAverage = Double(scores.map(\.net).reduce(0, +)) / Double(scores.count)
-            return PlayerAverageStat(name: name, rounds: scores.count, grossAverage: grossAverage, netAverage: netAverage)
-        }
-        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-
-    private var trendingFact: String {
-        let completedRounds = trips
+    private var completedRounds: [RoundSummary] {
+        trips
             .flatMap(\.rounds)
             .filter(\.isComplete)
-            .sorted { $0.date > $1.date }
+            .sorted { $0.date < $1.date }
+    }
 
-        guard let latest = completedRounds.first,
-              let bestNet = latest.players.min(by: { $0.net < $1.net })
-        else {
-            return "Finish a round to unlock trends."
+    private var playerStats: [PlayerAverageStat] {
+        var entriesByName: [String: [PlayerRoundWithHoles]] = [:]
+        for round in completedRounds {
+            for player in round.players {
+                entriesByName[player.name, default: []].append(PlayerRoundWithHoles(round: round, player: player))
+            }
         }
 
-        let firstName = bestNet.name.split(separator: " ").first.map(String.init) ?? bestNet.name
-        return "\(firstName) had the low net in the latest round with \(bestNet.net)."
+        var stats: [PlayerAverageStat] = []
+        for (name, entries) in entriesByName {
+            let scores = entries.map { $0.player }
+            guard !scores.isEmpty else { continue }
+
+            let grossTotal = scores.reduce(0) { $0 + $1.gross }
+            let netTotal = scores.reduce(0) { $0 + $1.net }
+            var birdies = 0
+            var netBirdies = 0
+
+            for entry in entries {
+                for hole in entry.round.holes where entry.round.isHoleComplete(hole.number) {
+                    guard let playerHole = hole.players.first(where: { $0.name == name }) else { continue }
+                    if playerHole.gross == hole.par - 1 {
+                        birdies += 1
+                    }
+                    if playerHole.net <= hole.par - 1 {
+                        netBirdies += 1
+                    }
+                }
+            }
+
+            stats.append(PlayerAverageStat(
+                name: name,
+                rounds: scores.count,
+                grossAverage: Double(grossTotal) / Double(scores.count),
+                netAverage: Double(netTotal) / Double(scores.count),
+                birdies: birdies,
+                netBirdies: netBirdies
+            ))
+        }
+
+        return stats.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     var body: some View {
         if !playerStats.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Label("Player Averages", systemImage: "chart.bar.fill")
+                    Label("Player Form", systemImage: "chart.bar.fill")
                         .font(.headline)
                     Spacer()
-                    Text("Gross / Net")
+                    Text("Averages + birdies")
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
                 }
 
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                    GridRow {
-                        Text("Player").font(.caption.bold())
-                        Text("Rds").font(.caption.bold())
-                        Text("Gross").font(.caption.bold())
-                        Text("Net").font(.caption.bold())
-                    }
-                    .foregroundStyle(.secondary)
-
-                    ForEach(playerStats) { stat in
-                        GridRow {
+                ForEach(playerStats) { stat in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
                             Text(firstName(for: stat.name))
-                            Text("\(stat.rounds)")
-                            Text(stat.grossAverage.formatted(.number.precision(.fractionLength(1))))
-                            Text(stat.netAverage.formatted(.number.precision(.fractionLength(1))))
+                                .font(.subheadline.bold())
+                            Spacer()
+                            Text("\(stat.rounds) rounds")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
                         }
-                        .font(.subheadline.monospacedDigit())
+
+                        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+                            GridRow {
+                                PlayerFormMiniStat(label: "Gross", value: stat.grossAverage.formatted(.number.precision(.fractionLength(1))))
+                                PlayerFormMiniStat(label: "Net", value: stat.netAverage.formatted(.number.precision(.fractionLength(1))))
+                            }
+                            GridRow {
+                                PlayerFormMiniStat(label: "Birdies", value: "\(stat.birdies)")
+                                PlayerFormMiniStat(label: "Net birdies", value: "\(stat.netBirdies)")
+                            }
+                        }
+                    }
+                    .padding(.vertical, 6)
+
+                    if stat.id != playerStats.last?.id {
+                        Divider()
                     }
                 }
-
-                Label(trendingFact, systemImage: "sparkles")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
             }
             .padding()
             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -400,8 +417,306 @@ struct PlayerAverageStat: Identifiable {
     let rounds: Int
     let grossAverage: Double
     let netAverage: Double
+    let birdies: Int
+    let netBirdies: Int
 
     var id: String { name }
+}
+
+private struct PlayerRoundWithHoles {
+    let round: RoundSummary
+    let player: PlayerRoundSummary
+}
+
+private struct PlayerFormMiniStat: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .fontWeight(.semibold)
+                .monospacedDigit()
+        }
+        .font(.caption)
+    }
+}
+
+private struct StablefordBarChart: View {
+    let values: [Int]
+    let color: Color
+
+    private var maxValue: Double {
+        Double(max(values.max() ?? 1, 1))
+    }
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 6) {
+            if values.isEmpty {
+                Capsule().fill(Color.secondary.opacity(0.18)).frame(height: 8)
+            } else {
+                ForEach(Array(values.enumerated()), id: \.offset) { _, value in
+                    VStack(spacing: 3) {
+                        Text("\(value)")
+                            .font(.caption2.monospacedDigit().bold())
+                            .foregroundStyle(.secondary)
+                        Capsule()
+                            .fill(color.opacity(0.78))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: max(8, CGFloat(Double(value) / maxValue) * 34))
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct TripStablefordCard: View {
+    let trip: GolfTrip
+
+    private var standings: [PlayerStablefordTripStat] {
+        let rounds = trip.rounds.filter(\.isComplete).sorted { $0.date < $1.date }
+        let grouped = Dictionary(grouping: rounds.flatMap(\.players), by: \.name)
+        return grouped.map { name, players in
+            PlayerStablefordTripStat(
+                name: name,
+                points: players.reduce(0) { $0 + $1.stableford },
+                roundPoints: rounds.compactMap { round in
+                    round.players.first(where: { $0.name == name })?.stableford
+                }
+            )
+        }
+        .sorted {
+            if $0.points == $1.points {
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            return $0.points > $1.points
+        }
+    }
+
+    private var topPoints: Int? {
+        standings.first?.points
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Trip Stableford", systemImage: "star.circle.fill")
+                    .font(.headline)
+            }
+
+            if standings.isEmpty {
+                Text("Stableford totals will show after scores are saved.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(Array(standings.enumerated()), id: \.element.id) { index, stat in
+                        let isTiedForLead = stat.points == topPoints
+                        HStack(spacing: 10) {
+                            Text("\(index + 1)")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                                .frame(width: 22)
+
+                            Text(stat.name)
+                                .font(.subheadline.weight(isTiedForLead ? .bold : .regular))
+
+                            Spacer()
+                            Text("\(stat.points) pts")
+                                .font(.subheadline.monospacedDigit().bold())
+                        }
+
+                        StablefordBarChart(values: stat.roundPoints, color: .orange)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 46)
+
+                        if stat.id != standings.last?.id {
+                            Divider()
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+            }
+        }
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func firstName(for name: String) -> String {
+        name.split(separator: " ").first.map(String.init) ?? name
+    }
+}
+
+private struct PlayerStablefordTripStat: Identifiable {
+    let name: String
+    let points: Int
+    let roundPoints: [Int]
+
+    var id: String { name }
+}
+
+struct TripStatsCard: View {
+    let trip: GolfTrip
+
+    private var completedRounds: [RoundSummary] {
+        trip.rounds.filter(\.isComplete)
+    }
+
+    private var playerRounds: [PlayerTripRound] {
+        completedRounds.flatMap { round in
+            round.players.map {
+                PlayerTripRound(
+                    playerName: $0.name,
+                    courseName: round.courseName,
+                    gross: $0.gross,
+                    net: $0.net,
+                    stableford: $0.stableford
+                )
+            }
+        }
+    }
+
+    private var bestGross: PlayerTripRound? {
+        playerRounds.min {
+            if $0.gross == $1.gross {
+                return $0.net < $1.net
+            }
+            return $0.gross < $1.gross
+        }
+    }
+
+    private var totalBirdies: Int {
+        completedRounds.reduce(0) { total, round in
+            total + round.holes.reduce(0) { holeTotal, hole in
+                guard round.isHoleComplete(hole.number) else { return holeTotal }
+                return holeTotal + hole.players.filter { $0.gross == hole.par - 1 }.count
+            }
+        }
+    }
+
+    private var totalNetBirdies: Int {
+        completedRounds.reduce(0) { total, round in
+            total + round.holes.reduce(0) { holeTotal, hole in
+                guard round.isHoleComplete(hole.number) else { return holeTotal }
+                return holeTotal + hole.players.filter { $0.net <= hole.par - 1 }.count
+            }
+        }
+    }
+
+    private var totalEaglesOrBetter: Int {
+        completedRounds.reduce(0) { total, round in
+            total + round.holes.reduce(0) { holeTotal, hole in
+                guard round.isHoleComplete(hole.number) else { return holeTotal }
+                return holeTotal + hole.players.filter { $0.gross <= hole.par - 2 }.count
+            }
+        }
+    }
+
+    private var bestBallSummary: String {
+        let scoredHoles = completedRounds.flatMap { round in
+            round.holes.filter { round.isHoleComplete($0.number) }
+        }
+        guard !scoredHoles.isEmpty else { return "—" }
+
+        let bestBall = scoredHoles.reduce(0) { total, hole in
+            total + (hole.players.map(\.gross).min() ?? hole.par)
+        }
+        let par = scoredHoles.reduce(0) { $0 + $1.par }
+        let delta = bestBall - par
+
+        if delta == 0 { return "\(bestBall) / E" }
+        return "\(bestBall) / \(delta > 0 ? "+" : "")\(delta)"
+    }
+
+    private var bestNet: PlayerTripRound? {
+        playerRounds.min {
+            if $0.net == $1.net {
+                return $0.gross < $1.gross
+            }
+            return $0.net < $1.net
+        }
+    }
+
+    private var trendText: String {
+        if trip.gamesDelta == 0 {
+            return "The match is dead even."
+        }
+
+        let leader = trip.gamesDelta > 0 ? GolfTrip.joshMattTeamName : GolfTrip.shaneJeffTeamName
+        let margin = abs(trip.gamesDelta)
+        return "\(leader) \(margin == 1 ? "has a one-game edge" : "leads by \(margin) games")."
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Trip Stats", systemImage: "chart.bar.xaxis")
+                    .font(.headline)
+                Spacer()
+                Text(trendText)
+                    .font(.caption.bold())
+                    .foregroundStyle(trip.leaderColor)
+                    .multilineTextAlignment(.trailing)
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                TripMetricTile(title: "Birdies", value: "\(totalBirdies)", subtitle: "\(totalNetBirdies) net birdies")
+                TripMetricTile(title: "Best Ball", value: bestBallSummary, subtitle: "group gross score")
+                TripMetricTile(
+                    title: "Low Gross",
+                    value: bestGross.map { "\($0.gross)" } ?? "—",
+                    subtitle: bestGross.map { "\(firstName(for: $0.playerName)) · \($0.courseName)" } ?? "after a round"
+                )
+                TripMetricTile(
+                    title: "Low Net",
+                    value: bestNet.map { "\($0.net)" } ?? "—",
+                    subtitle: bestNet.map { "\(firstName(for: $0.playerName)) · \($0.courseName)" } ?? "after a round"
+                )
+            }
+        }
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func firstName(for name: String) -> String {
+        name.split(separator: " ").first.map(String.init) ?? name
+    }
+}
+
+private struct TripMetricTile: View {
+    let title: String
+    let value: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.title3.monospacedDigit().bold())
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct PlayerTripRound {
+    let playerName: String
+    let courseName: String
+    let gross: Int
+    let net: Int
+    let stableford: Int
 }
 
 struct TripPlayersCard: View {
@@ -753,6 +1068,7 @@ struct TripDetailView: View {
     let editRoundScores: (UUID) -> Void
     let editRoundSetup: (UUID) -> Void
     let deleteRound: (UUID) -> Void
+    let saveCompletedHoleEdit: (RoundSummary, Int) -> Void
     let editTrip: (String, Date) -> Void
     let deleteTrip: () -> Void
     @State private var showEditTrip = false
@@ -764,8 +1080,9 @@ struct TripDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 TripCard(trip: trip)
+                TripStablefordCard(trip: trip)
+                TripStatsCard(trip: trip)
                 TripPlayersCard(trip: trip, account: account)
-                TripCourseMapCard(trip: trip)
 
                 Button(action: startRound) {
                     Label("Add Round to Trip", systemImage: "plus.circle")
@@ -786,22 +1103,35 @@ struct TripDetailView: View {
                         )
                     } else {
                         ForEach($trip.rounds) { $round in
-                            NavigationLink {
-                                RoundDetailView(round: $round, account: account) {
+                            if round.isComplete {
+                                NavigationLink {
+                                    RoundDetailView(round: $round, account: account) {
+                                        editRoundScores(round.id)
+                                    } editSetup: {
+                                        editRoundSetup(round.id)
+                                    } deleteRound: {
+                                        deleteRound(round.id)
+                                    } saveCompletedHoleEdit: { updatedRound, holeNumber in
+                                        saveCompletedHoleEdit(updatedRound, holeNumber)
+                                    } playerImageData: { playerName in
+                                        account.profileImageData(for: playerName)
+                                    }
+                                } label: {
+                                    RoundSummaryCard(round: round) { playerName in
+                                        account.profileImageData(for: playerName)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                Button {
                                     editRoundScores(round.id)
-                                } editSetup: {
-                                    editRoundSetup(round.id)
-                                } deleteRound: {
-                                    deleteRound(round.id)
-                                } playerImageData: { playerName in
-                                    account.profileImageData(for: playerName)
+                                } label: {
+                                    RoundSummaryCard(round: round) { playerName in
+                                        account.profileImageData(for: playerName)
+                                    }
                                 }
-                            } label: {
-                                RoundSummaryCard(round: round) { playerName in
-                                    account.profileImageData(for: playerName)
-                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }

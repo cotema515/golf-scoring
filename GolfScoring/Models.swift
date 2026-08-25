@@ -1,16 +1,89 @@
 import Foundation
+import SwiftUI
 
 struct UserProfile: Codable, Hashable {
+    var username: String = ""
     var email: String = ""
     var firstName: String = ""
     var lastName: String = ""
     var ghinNumber: String = ""
     var handicapIndex: Double?
     var profileImageData: Data?
+    var profileImagePath: String?
+    var profileImageURL: String?
     var playerKey: String?
+    var profileType: ProfileType = .general
+    var createdAt: Date = Date()
+
+    init(
+        username: String = "",
+        email: String = "",
+        firstName: String = "",
+        lastName: String = "",
+        ghinNumber: String = "",
+        handicapIndex: Double? = nil,
+        profileImageData: Data? = nil,
+        profileImagePath: String? = nil,
+        profileImageURL: String? = nil,
+        playerKey: String? = nil,
+        profileType: ProfileType = .general,
+        createdAt: Date = Date()
+    ) {
+        self.username = username
+        self.email = email
+        self.firstName = firstName
+        self.lastName = lastName
+        self.ghinNumber = ghinNumber
+        self.handicapIndex = handicapIndex
+        self.profileImageData = profileImageData
+        self.profileImagePath = profileImagePath
+        self.profileImageURL = profileImageURL
+        self.playerKey = playerKey
+        self.profileType = profileType
+        self.createdAt = createdAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case email
+        case username
+        case firstName
+        case lastName
+        case ghinNumber
+        case handicapIndex
+        case profileImageData
+        case profileImagePath
+        case profileImageURL
+        case playerKey
+        case profileType
+        case createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
+        firstName = try container.decodeIfPresent(String.self, forKey: .firstName) ?? ""
+        lastName = try container.decodeIfPresent(String.self, forKey: .lastName) ?? ""
+        ghinNumber = try container.decodeIfPresent(String.self, forKey: .ghinNumber) ?? ""
+        handicapIndex = try container.decodeIfPresent(Double.self, forKey: .handicapIndex)
+        profileImageData = try container.decodeIfPresent(Data.self, forKey: .profileImageData)
+        profileImagePath = try container.decodeIfPresent(String.self, forKey: .profileImagePath)
+        profileImageURL = try container.decodeIfPresent(String.self, forKey: .profileImageURL)
+        playerKey = try container.decodeIfPresent(String.self, forKey: .playerKey)
+        profileType = try container.decodeIfPresent(ProfileType.self, forKey: .profileType) ?? (playerKey == nil ? .general : .coteCup)
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+    }
 
     var fullName: String {
         "\(firstName) \(lastName)".trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var displayName: String {
+        fullName.isEmpty ? "New Golfer" : fullName
+    }
+
+    var isCoteCupProfile: Bool {
+        profileType == .coteCup || playerKey != nil
     }
 
     var isComplete: Bool {
@@ -20,18 +93,115 @@ struct UserProfile: Codable, Hashable {
     }
 }
 
+enum AppGameMode: String, Codable, Hashable {
+    case coteFamily
+    case general
+
+    var title: String {
+        switch self {
+        case .coteFamily:
+            return "Cote Family Game"
+        case .general:
+            return "General Golf"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .coteFamily:
+            return "Matt/Josh vs Jeff/Shane history, trips, and match scoring."
+        case .general:
+            return "Regular golf scoring for rounds outside the family game."
+        }
+    }
+}
+
+enum ProfileType: String, Codable, Hashable, CaseIterable {
+    case coteCup
+    case general
+
+    var title: String {
+        switch self {
+        case .coteCup:
+            return "Cote Cup"
+        case .general:
+            return "General Golfer"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .coteCup:
+            return "Linked to the family game and shared Cote Cup history."
+        case .general:
+            return "A standalone golfer profile for future rounds outside the family game."
+        }
+    }
+}
+
 struct FriendProfile: Identifiable, Codable, Hashable {
     var id = UUID()
     var firstName: String
     var lastName: String
     var handicapIndex: Double
     var profileImageData: Data? = nil
+    var profileImagePath: String? = nil
+    var profileImageURL: String? = nil
     var playerKey: String? = nil
 
     var fullName: String {
         "\(firstName) \(lastName)"
     }
 
+}
+
+struct GolfAppUser: Identifiable, Codable, Hashable {
+    var authUserID: String
+    var username: String
+    var email: String
+    var firstName: String
+    var lastName: String
+    var handicapIndex: Double?
+    var playerKey: String?
+    var profileType: ProfileType
+    var isFriend: Bool
+
+    var id: String { authUserID }
+    var fullName: String { "\(firstName) \(lastName)".trimmingCharacters(in: .whitespacesAndNewlines) }
+    var displayName: String { fullName.isEmpty ? "@\(username)" : fullName }
+}
+
+struct GolfAppGame: Identifiable, Codable, Hashable {
+    struct Player: Identifiable, Codable, Hashable {
+        var authUserID: String
+        var displayName: String
+        var username: String?
+        var handicapIndex: Double?
+        var teamName: String?
+        var teeTimeGroup: String?
+
+        var id: String { authUserID }
+    }
+
+    var id: UUID
+    var name: String
+    var format: String
+    var status: String
+    var createdAt: Date
+    var courseName: String?
+    var courseLocation: String?
+    var teeName: String?
+    var players: [Player]
+}
+
+struct GolfAppHoleScore: Identifiable, Codable, Hashable {
+    var gameID: UUID
+    var playerUserID: String
+    var holeNumber: Int
+    var grossScore: Int
+    var updatedAt: Date?
+
+    var id: String { "\(gameID.uuidString)-\(playerUserID)-\(holeNumber)" }
 }
 
 struct Golfer: Identifiable, Codable, Hashable {
@@ -116,7 +286,7 @@ struct RoundSummary: Identifiable, Codable, Hashable {
         self.courseName = courseName
         self.teamResult = teamResult
         self.players = players
-        self.holes = holes ?? HoleSummary.sampleHoles(for: courseName)
+        self.holes = holes ?? []
         self.course = course
         self.golfers = golfers
         self.completedHoleNumbers = completedHoleNumbers ?? self.holes.map(\.number)
@@ -138,11 +308,30 @@ struct RoundSummary: Identifiable, Codable, Hashable {
         totalHoleCount > 0 && completedHoleCount >= totalHoleCount
     }
 
+    var resolvedTeamResult: String {
+        let completedHoles = holes.filter { isHoleComplete($0.number) }
+        guard !completedHoles.isEmpty else { return teamResult }
+        return PreviousRoundCalculator.matchResultText(
+            for: completedHoles,
+            round: self,
+            teamOneName: teamName(1),
+            teamTwoName: teamName(2)
+        )
+    }
+
     var winningTeamName: String? {
-        if let winner = teamResult.components(separatedBy: " Up ").first, winner != teamResult {
+        let result = resolvedTeamResult
+        if let winner = result.components(separatedBy: " Up ").first, winner != result {
             return Self.normalizedTeamName(winner)
         }
-        if teamResult == "Tie" { return "Tie" }
+        let parts = result.split(separator: " ").map(String.init)
+        if parts.count >= 4,
+           Int(parts[parts.count - 3]) != nil,
+           parts[parts.count - 2] == "&",
+           Int(parts[parts.count - 1]) != nil {
+            return Self.normalizedTeamName(parts.dropLast(3).joined(separator: " "))
+        }
+        if result == "Tie" { return "Tie" }
         return nil
     }
 
@@ -240,6 +429,12 @@ struct GolfTrip: Identifiable, Codable, Hashable {
         if gamesDelta == 0 { return "All square" }
         if joshMattWins > shaneJeffWins { return "\(Self.joshMattTeamName) +\(joshMattWins - shaneJeffWins)" }
         return "\(Self.shaneJeffTeamName) +\(abs(gamesDelta))"
+    }
+
+    var leaderColor: Color {
+        if gamesDelta > 0 { return AppColors.joshMatt }
+        if gamesDelta < 0 { return AppColors.jeffShane }
+        return AppColors.push
     }
 
     var gamesDelta: Int {
@@ -359,13 +554,7 @@ struct MatchRound: Codable, Hashable {
     }
 
     var matchDelta: Int {
-        holes.reduce(0) { result, hole in
-            switch holeWinner(on: hole) {
-            case 1: result + 1
-            case 2: result - 1
-            default: result
-            }
-        }
+        matchState(through: nil).delta
     }
 
     func teamName(_ team: Int) -> String {
@@ -373,8 +562,13 @@ struct MatchRound: Codable, Hashable {
     }
 
     var statusText: String {
-        if matchDelta == 0 { return "ALL SQUARE" }
-        return "\(teamName(matchDelta > 0 ? 1 : 2).uppercased()) · \(abs(matchDelta)) UP"
+        let state = matchState(through: nil)
+        if state.delta == 0 { return "ALL SQUARE" }
+        let winner = teamName(state.delta > 0 ? 1 : 2).uppercased()
+        if state.closedAtHole != nil {
+            return "\(winner) · \(abs(state.delta)) & \(state.holesRemaining)"
+        }
+        return "\(winner) · \(abs(state.delta)) UP"
     }
 
     func summary(id: UUID = UUID()) -> RoundSummary {
@@ -397,7 +591,7 @@ struct MatchRound: Codable, Hashable {
             id: id,
             date: date,
             courseName: course.name,
-            teamResult: summaryResultText(for: matchDelta),
+            teamResult: finalResultText(),
             players: golfers.map { golfer in
                 let gross = holes.reduce(0) { total, hole in
                     total + (scores[golfer.id]?[hole.number]?.gross ?? 0)
@@ -432,21 +626,67 @@ struct MatchRound: Codable, Hashable {
     }
 
     private func runningTotal(through holeNumber: Int) -> String {
-        let delta = holes
-            .filter { $0.number <= holeNumber }
-            .reduce(0) { total, hole in
-                switch holeWinner(on: hole) {
-                case 1: return total + 1
-                case 2: return total - 1
-                default: return total
-                }
-            }
-
-        return summaryResultText(for: delta)
+        let state = matchState(through: holeNumber)
+        return summaryResultText(for: state.delta, closedAtHole: state.closedAtHole, holesRemaining: state.holesRemaining)
     }
 
-    private func summaryResultText(for delta: Int) -> String {
+    private func finalResultText() -> String {
+        let state = matchState(through: nil)
+        return summaryResultText(for: state.delta, closedAtHole: state.closedAtHole, holesRemaining: state.holesRemaining)
+    }
+
+    private func summaryResultText(for delta: Int, closedAtHole: Int? = nil, holesRemaining: Int? = nil) -> String {
         if delta == 0 { return "Tie" }
-        return delta > 0 ? "\(teamName(1)) Up \(delta)" : "\(teamName(2)) Up \(abs(delta))"
+        let winner = delta > 0 ? teamName(1) : teamName(2)
+        if closedAtHole != nil, let holesRemaining {
+            return "\(winner) \(abs(delta)) & \(holesRemaining)"
+        }
+        return "\(winner) Up \(abs(delta))"
+    }
+
+    private func matchState(through holeNumber: Int?) -> (delta: Int, closedAtHole: Int?, holesRemaining: Int) {
+        let sortedHoles = holes.sorted { $0.number < $1.number }
+        let totalHoles = sortedHoles.count
+        var delta = 0
+        var playedCount = 0
+
+        for (index, hole) in sortedHoles.enumerated() {
+            if let holeNumber, hole.number > holeNumber { break }
+            guard isHoleComplete(hole) else { break }
+            playedCount += 1
+
+            switch holeWinner(on: hole) {
+            case 1:
+                delta += 1
+            case 2:
+                delta -= 1
+            default:
+                break
+            }
+
+            let holesRemaining = max(0, totalHoles - index - 1)
+            if holesRemaining > 0, abs(delta) > holesRemaining {
+                return (delta, hole.number, holesRemaining)
+            }
+        }
+
+        return (delta, nil, max(0, totalHoles - playedCount))
+    }
+}
+
+extension MatchRound {
+    static var empty: MatchRound {
+        MatchRound(
+            name: "New Match",
+            golfers: [
+                Golfer(name: "Player 1", handicapIndex: 0, courseHandicap: 0, team: 1),
+                Golfer(name: "Player 2", handicapIndex: 0, courseHandicap: 0, team: 1),
+                Golfer(name: "Player 3", handicapIndex: 0, courseHandicap: 0, team: 2),
+                Golfer(name: "Player 4", handicapIndex: 0, courseHandicap: 0, team: 2)
+            ],
+            holes: CourseCatalogEntry.courses.first?.holes ?? (1...18).map {
+                Hole(number: $0, par: 4, strokeIndex: $0)
+            }
+        )
     }
 }

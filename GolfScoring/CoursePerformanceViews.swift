@@ -3,6 +3,7 @@ import SwiftUI
 struct CoursesTabView: View {
     let trips: [GolfTrip]
     @ObservedObject var account: AccountStore
+    var showsCotePerformance = true
     @State private var searchText = ""
     @State private var selectedRegion = "All"
     @FocusState private var isSearchFocused: Bool
@@ -119,7 +120,7 @@ struct CoursesTabView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Course Book")
                         .font(.title2.bold())
-                    Text("Catalog, tee info, and how the boys have played each track.")
+                    Text(showsCotePerformance ? "Catalog, tee info, and how the boys have played each track." : "Browse courses, tees, yardages, ratings, and slopes.")
                         .foregroundStyle(.secondary)
                 }
             }

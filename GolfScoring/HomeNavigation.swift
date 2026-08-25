@@ -13,7 +13,6 @@ struct HomeTabView: View {
     @ObservedObject var cloudSync: CloudSyncStore
     @Binding var trips: [GolfTrip]
     let refreshCloud: () -> Void
-    let backupCloud: () -> Void
     @State private var path: [HomeRoute] = []
 
     var body: some View {
@@ -23,7 +22,6 @@ struct HomeTabView: View {
                 cloudSync: cloudSync,
                 trips: trips.sortedByNewestDate(),
                 refreshCloud: refreshCloud,
-                backupCloud: backupCloud,
                 startSingleRound: { startRound(from: nil) },
                 startTrip: { path.append(.newTrip) },
                 openTrip: { path.append(.trip($0.id)) },
@@ -45,8 +43,13 @@ struct HomeTabView: View {
         switch route {
         case .newTrip:
             NewTripView(account: account) { tripName, tripDate in
-                let trip = GolfTrip(name: tripName, date: tripDate, rounds: [])
-                trips.append(trip)
+                let trip = GolfMutationService.createTrip(
+                    name: tripName,
+                    date: tripDate,
+                    trips: &trips,
+                    actor: account.profile,
+                    cloudSync: cloudSync
+                )
                 replaceCurrentRoute(with: .trip(trip.id))
             } cancel: {
                 popCurrentRoute()
@@ -61,8 +64,15 @@ struct HomeTabView: View {
                     editRoundSetup(roundID, in: trips[tripIndex].id)
                 } deleteRound: { roundID in
                     deleteRound(roundID, in: trips[tripIndex].id)
+                } saveCompletedHoleEdit: { updatedRound, holeNumber in
+                    GolfMutationService.saveCompletedHoleEdit(
+                        updatedRound,
+                        holeNumber: holeNumber,
+                        actor: account.profile,
+                        cloudSync: cloudSync
+                    )
                 } editTrip: { name, date in
-                    trips[tripIndex].updateTripDetails(name: name, startDate: date)
+                    editTrip(trips[tripIndex].id, name: name, date: date)
                 } deleteTrip: {
                     deleteTrip(trips[tripIndex].id)
                 }
@@ -78,7 +88,16 @@ struct HomeTabView: View {
                 store: store,
                 account: account,
                 isEditingExistingRound: roundID != nil,
-                start: { replaceCurrentRoute(with: .scorecard(tripID, roundID)) },
+                start: {
+                    if roundID != nil {
+                        let currentRound = store.round
+                        saveSubmittedRound(currentRound.summary(id: roundID ?? UUID()), tripID: tripID)
+                        store.resetRound()
+                        popCurrentRoute()
+                    } else {
+                        replaceCurrentRoute(with: .scorecard(tripID, roundID))
+                    }
+                },
                 cancel: {
                     store.resetRound()
                     popCurrentRoute()
@@ -118,43 +137,43 @@ struct HomeTabView: View {
     }
 
     private func saveSubmittedRound(_ summary: RoundSummary, tripID: UUID?) {
-        if let tripID,
-           let tripIndex = trips.firstIndex(where: { $0.id == tripID }) {
-            upsert(summary, in: &trips[tripIndex].rounds)
-            trips[tripIndex].syncDateToFirstRound()
-            return
-        }
-
-        let singleRoundsName = "Single Rounds"
-        if let tripIndex = trips.firstIndex(where: { $0.name == singleRoundsName }) {
-            upsert(summary, in: &trips[tripIndex].rounds)
-            trips[tripIndex].syncDateToFirstRound()
-        } else {
-            trips.append(GolfTrip(name: singleRoundsName, date: summary.date, rounds: [summary]))
-        }
-    }
-
-    private func upsert(_ summary: RoundSummary, in rounds: inout [RoundSummary]) {
-        if let roundIndex = rounds.firstIndex(where: { $0.id == summary.id }) {
-            rounds[roundIndex] = summary
-        } else {
-            rounds.append(summary)
-        }
+        GolfMutationService.saveSubmittedRound(
+            summary,
+            tripID: tripID,
+            trips: &trips,
+            actor: account.profile,
+            cloudSync: cloudSync
+        )
     }
 
     private func deleteRound(_ roundID: UUID, in tripID: UUID) {
-        guard let tripIndex = trips.firstIndex(where: { $0.id == tripID }) else { return }
-        trips[tripIndex].rounds.removeAll { $0.id == roundID }
-        trips[tripIndex].syncDateToFirstRound()
+        GolfMutationService.deleteRound(
+            roundID,
+            in: tripID,
+            trips: &trips,
+            actor: account.profile,
+            cloudSync: cloudSync
+        )
     }
 
     private func editTrip(_ tripID: UUID, name: String, date: Date) {
-        guard let tripIndex = trips.firstIndex(where: { $0.id == tripID }) else { return }
-        trips[tripIndex].updateTripDetails(name: name, startDate: date)
+        GolfMutationService.updateTrip(
+            tripID,
+            name: name,
+            date: date,
+            trips: &trips,
+            actor: account.profile,
+            cloudSync: cloudSync
+        )
     }
 
     private func deleteTrip(_ tripID: UUID) {
-        trips.removeAll { $0.id == tripID }
+        GolfMutationService.deleteTrip(
+            tripID,
+            trips: &trips,
+            actor: account.profile,
+            cloudSync: cloudSync
+        )
         path.removeAll { route in
             if case .trip(let id) = route {
                 return id == tripID
@@ -179,6 +198,123 @@ struct HomeTabView: View {
         popCurrentRoute()
         path.append(route)
     }
+}
+
+@MainActor
+enum GolfMutationService {
+    @discardableResult
+    static func createTrip(
+        name: String,
+        date: Date,
+        trips: inout [GolfTrip],
+        actor: UserProfile,
+        cloudSync: CloudSyncStore
+    ) -> GolfTrip {
+        let trip = GolfTrip(name: name, date: date, rounds: [])
+        trips.append(trip)
+        Task {
+            await cloudSync.syncTrip(trip, actor: actor)
+        }
+        return trip
+    }
+
+    static func updateTrip(
+        _ tripID: UUID,
+        name: String,
+        date: Date,
+        trips: inout [GolfTrip],
+        actor: UserProfile,
+        cloudSync: CloudSyncStore
+    ) {
+        guard let tripIndex = trips.firstIndex(where: { $0.id == tripID }) else { return }
+        trips[tripIndex].updateTripDetails(name: name, startDate: date)
+        let updatedTrip = trips[tripIndex]
+        Task {
+            await cloudSync.syncTrip(updatedTrip, actor: actor)
+        }
+    }
+
+    static func saveSubmittedRound(
+        _ summary: RoundSummary,
+        tripID: UUID?,
+        trips: inout [GolfTrip],
+        actor: UserProfile,
+        cloudSync: CloudSyncStore
+    ) {
+        let tripIndex = indexForRoundSave(summary, tripID: tripID, trips: &trips)
+        upsert(summary, in: &trips[tripIndex].rounds)
+        trips[tripIndex].syncDateToFirstRound()
+        let updatedTrip = trips[tripIndex]
+        Task {
+            await cloudSync.syncRound(summary, in: updatedTrip, actor: actor)
+        }
+    }
+
+    static func deleteRound(
+        _ roundID: UUID,
+        in tripID: UUID,
+        trips: inout [GolfTrip],
+        actor: UserProfile,
+        cloudSync: CloudSyncStore
+    ) {
+        guard let tripIndex = trips.firstIndex(where: { $0.id == tripID }) else { return }
+        trips[tripIndex].rounds.removeAll { $0.id == roundID }
+        trips[tripIndex].syncDateToFirstRound()
+        Task {
+            await cloudSync.deleteRound(roundID, actor: actor)
+        }
+    }
+
+    static func deleteTrip(
+        _ tripID: UUID,
+        trips: inout [GolfTrip],
+        actor: UserProfile,
+        cloudSync: CloudSyncStore
+    ) {
+        trips.removeAll { $0.id == tripID }
+        Task {
+            await cloudSync.deleteTrip(tripID, actor: actor)
+        }
+    }
+
+    static func saveCompletedHoleEdit(
+        _ updatedRound: RoundSummary,
+        holeNumber: Int,
+        actor: UserProfile,
+        cloudSync: CloudSyncStore
+    ) {
+        Task {
+            await cloudSync.syncCompletedHoleEdit(round: updatedRound, holeNumber: holeNumber, actor: actor)
+        }
+    }
+
+    private static func indexForRoundSave(
+        _ summary: RoundSummary,
+        tripID: UUID?,
+        trips: inout [GolfTrip]
+    ) -> Int {
+        if let tripID,
+           let tripIndex = trips.firstIndex(where: { $0.id == tripID }) {
+            return tripIndex
+        }
+
+        let singleRoundsName = "Single Rounds"
+        if let tripIndex = trips.firstIndex(where: { $0.name == singleRoundsName }) {
+            return tripIndex
+        }
+
+        trips.append(GolfTrip(name: singleRoundsName, date: summary.date, rounds: []))
+        return trips.count - 1
+    }
+
+    private static func upsert(_ summary: RoundSummary, in rounds: inout [RoundSummary]) {
+        if let roundIndex = rounds.firstIndex(where: { $0.id == summary.id }) {
+            rounds[roundIndex] = summary
+        } else {
+            rounds.append(summary)
+        }
+    }
+
 }
 
 extension Array where Element == GolfTrip {

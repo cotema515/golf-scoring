@@ -42,15 +42,14 @@ final class CloudSyncStore: ObservableObject {
 
     @Published private(set) var state: SyncState = SupabaseConfiguration.isConfigured ? .idle : .localOnly
 
-    private let client = SupabaseSnapshotClient()
-    private var lastEncodedSnapshot: Data?
+    private let client = SupabaseFamilyGolfClient()
     private var lastKnownCloudUpdatedAt: Date?
 
     var isConfigured: Bool {
         SupabaseConfiguration.isConfigured
     }
 
-    func fetchCloudSnapshot() async -> AppSnapshot? {
+    func fetchCloudData() async -> FamilyGolfData? {
         guard isConfigured else {
             state = .localOnly
             return nil
@@ -58,49 +57,130 @@ final class CloudSyncStore: ObservableObject {
 
         state = .syncing
         do {
-            let snapshot = try await client.fetchSnapshot()
-            if let snapshot {
-                lastEncodedSnapshot = try? JSONEncoder.cloud.encode(snapshot)
-            }
+            let data = try await client.fetchFamilyGolfData()
+            lastKnownCloudUpdatedAt = data?.savedAt
             state = .synced(Date())
-            return snapshot
+            return data
         } catch {
             state = .failed(error.localizedDescription)
             return nil
         }
     }
 
-    func fetchCloudSnapshotIfChanged() async -> AppSnapshot? {
+    func fetchCloudDataIfChanged() async -> FamilyGolfData? {
         guard isConfigured else {
             state = .localOnly
             return nil
         }
 
         do {
-            let cloudUpdatedAt = try await client.fetchSnapshotUpdatedAt()
+            let cloudUpdatedAt = try await client.fetchFamilyGolfUpdatedAt()
             guard cloudUpdatedAt != lastKnownCloudUpdatedAt else { return nil }
             lastKnownCloudUpdatedAt = cloudUpdatedAt
-            return await fetchCloudSnapshot()
+            return await fetchCloudData()
         } catch {
             state = .failed(error.localizedDescription)
             return nil
         }
     }
 
-    func pushSnapshot(_ snapshot: AppSnapshot, force: Bool = false) async {
+    func syncGroupPlayers(_ players: [FriendProfile], actor: UserProfile) async {
         guard isConfigured else {
             state = .localOnly
             return
         }
 
-        let encoded = try? JSONEncoder.cloud.encode(snapshot)
-        guard force || encoded != lastEncodedSnapshot else { return }
+        state = .syncing
+        do {
+            try await client.upsertGroupPlayers(players, actor: actor)
+            let syncDate = Date()
+            lastKnownCloudUpdatedAt = syncDate
+            state = .synced(syncDate)
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    func syncTrip(_ trip: GolfTrip, actor: UserProfile) async {
+        guard isConfigured else {
+            state = .localOnly
+            return
+        }
 
         state = .syncing
         do {
-            try await client.upsertSnapshot(snapshot)
-            lastEncodedSnapshot = encoded
-            state = .synced(Date())
+            try await client.upsertTrip(trip, actor: actor)
+            let syncDate = Date()
+            lastKnownCloudUpdatedAt = syncDate
+            state = .synced(syncDate)
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    func syncRound(_ round: RoundSummary, in trip: GolfTrip, actor: UserProfile) async {
+        guard isConfigured else {
+            state = .localOnly
+            return
+        }
+
+        state = .syncing
+        do {
+            try await client.upsertRound(round, in: trip, actor: actor)
+            let syncDate = Date()
+            lastKnownCloudUpdatedAt = syncDate
+            state = .synced(syncDate)
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    func deleteRound(_ roundID: UUID, actor: UserProfile) async {
+        guard isConfigured else {
+            state = .localOnly
+            return
+        }
+
+        state = .syncing
+        do {
+            try await client.deleteRound(roundID, actor: actor)
+            let syncDate = Date()
+            lastKnownCloudUpdatedAt = syncDate
+            state = .synced(syncDate)
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    func deleteTrip(_ tripID: UUID, actor: UserProfile) async {
+        guard isConfigured else {
+            state = .localOnly
+            return
+        }
+
+        state = .syncing
+        do {
+            try await client.deleteTrip(tripID, actor: actor)
+            let syncDate = Date()
+            lastKnownCloudUpdatedAt = syncDate
+            state = .synced(syncDate)
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    func syncCompletedHoleEdit(round: RoundSummary, holeNumber: Int, actor: UserProfile) async {
+        guard isConfigured else {
+            state = .localOnly
+            return
+        }
+
+        state = .syncing
+        do {
+            try await client.updateCompletedHoleScores(round: round, holeNumber: holeNumber, actor: actor)
+            let syncDate = Date()
+            lastKnownCloudUpdatedAt = syncDate
+            state = .synced(syncDate)
         } catch {
             state = .failed(error.localizedDescription)
         }
